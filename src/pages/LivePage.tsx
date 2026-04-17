@@ -87,7 +87,7 @@ export default function LivePage() {
         audioLevel={session.audioLevel}
       />
 
-      <Box sx={{ px: 2, flex: 1 }}>
+      <Box sx={{ px: 2, flex: 1, minHeight: 0 }}>
         <RealtimeChart data={session.timeSeries} targetBpm={targetBpm} />
       </Box>
 

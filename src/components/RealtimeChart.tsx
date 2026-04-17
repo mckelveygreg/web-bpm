@@ -49,12 +49,11 @@ export default function RealtimeChart({
   }, [data, targetBpm, windowMs]);
 
   return (
-    <Box sx={{ width: "100%", height: isSmall ? 160 : 280 }}>
+    <Box sx={{ width: "100%", height: "100%", minHeight: isSmall ? 120 : 280 }}>
       <LineChart
         xAxis={[
           {
             data: xData,
-            label: "Time (s)",
             scaleType: "linear",
             valueFormatter: (v: number) => `${v}s`,
           },
@@ -63,7 +62,6 @@ export default function RealtimeChart({
           {
             min: yMin,
             max: yMax,
-            label: "BPM",
           },
         ]}
         series={[
@@ -75,7 +73,7 @@ export default function RealtimeChart({
           },
         ]}
         skipAnimation
-        margin={{ top: 20, right: 20, bottom: 40, left: 50 }}
+        margin={isSmall ? { top: 10, right: 10, bottom: 24, left: 36 } : { top: 20, right: 20, bottom: 40, left: 50 }}
       >
         {targetBpm && (
           <ChartsReferenceLine
