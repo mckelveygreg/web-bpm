@@ -17,6 +17,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: false,
       includeAssets: ["favicon.svg"],
       manifest: {
         name: "Web BPM — Realtime Beat Tracker",
@@ -49,6 +50,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         runtimeCaching: [
           {

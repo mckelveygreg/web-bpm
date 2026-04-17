@@ -5,10 +5,20 @@ import RealtimeChart from "../components/RealtimeChart";
 import LiveControls from "../components/LiveControls";
 import { useSession } from "../hooks/useSession";
 import { useMetronome } from "../hooks/useMetronome";
+import { usePictureInPicture } from "../hooks/usePictureInPicture";
 
 export default function LivePage() {
   const session = useSession();
   const metronome = useMetronome();
+  const pip = usePictureInPicture();
+
+  // Keep PiP canvas in sync with live BPM state
+  pip.update({
+    bpm: session.currentBpm,
+    isStable: session.isStable,
+    confidence: session.confidence,
+    audioLevel: session.audioLevel,
+  });
   const [targetBpm, setTargetBpmLocal] = useState<number | null>(() => {
     const stored = localStorage.getItem("targetBpm");
     return stored ? parseInt(stored, 10) : null;
@@ -111,6 +121,9 @@ export default function LivePage() {
           onMetadataChange={session.setMetadata}
           onStart={handleStart}
           onStop={handleStop}
+          pipSupported={pip.isSupported}
+          pipActive={pip.isActive}
+          onPipToggle={pip.toggle}
         />
       </Box>
 

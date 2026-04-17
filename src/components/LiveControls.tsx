@@ -15,6 +15,7 @@ import MicIcon from "@mui/icons-material/Mic";
 import MetronomeIcon from "@mui/icons-material/Timer";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import PictureInPictureAltIcon from "@mui/icons-material/PictureInPictureAlt";
 import type { SessionMetadata } from "../hooks/useSession";
 
 interface LiveControlsProps {
@@ -30,6 +31,9 @@ interface LiveControlsProps {
   onMetadataChange: (metadata: SessionMetadata) => void;
   onStart: (recordAudio: boolean) => void;
   onStop: () => void;
+  pipSupported?: boolean;
+  pipActive?: boolean;
+  onPipToggle?: () => void;
 }
 
 function formatElapsed(ms: number): string {
@@ -52,6 +56,9 @@ export default function LiveControls({
   onMetadataChange,
   onStart,
   onStop,
+  pipSupported,
+  pipActive,
+  onPipToggle,
 }: LiveControlsProps) {
   const [recordAudio, setRecordAudio] = useState(true);
   const [showDetails, setShowDetails] = useState(false);
@@ -210,6 +217,18 @@ export default function LiveControls({
               />
             )}
             <Box sx={{ flex: 1 }} />
+            {pipSupported && (
+              <Button
+                variant={pipActive ? "contained" : "outlined"}
+                color="secondary"
+                size="small"
+                onClick={onPipToggle}
+                sx={{ minWidth: 0, px: 1.5 }}
+                title={pipActive ? "Exit floating BPM" : "Float BPM"}
+              >
+                <PictureInPictureAltIcon fontSize="small" />
+              </Button>
+            )}
             <Button
               variant="contained"
               color="error"
