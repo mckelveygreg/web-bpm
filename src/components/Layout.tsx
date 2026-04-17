@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback, useEffect } from "react";
+import { type ReactNode, useCallback } from "react";
 import {
   AppBar,
   BottomNavigation,
@@ -24,17 +24,6 @@ interface LayoutProps {
 const REPO_URL = "https://github.com/mckelveygreg/web-bpm";
 
 export default function Layout({ tab, onTabChange, children }: LayoutProps) {
-  const [safeBottom, setSafeBottom] = useState(0);
-
-  useEffect(() => {
-    // Read CSS env var for safe area
-    const el = document.documentElement;
-    const val = getComputedStyle(el).getPropertyValue("--sab");
-    if (val) {
-      setSafeBottom(parseInt(val, 10) || 0);
-    }
-  }, []);
-
   const handleTabChange = useCallback(
     (_: unknown, value: string) => {
       onTabChange(value as Tab);
@@ -83,7 +72,7 @@ export default function Layout({ tab, onTabChange, children }: LayoutProps) {
           bgcolor: "background.paper",
           borderTop: 1,
           borderColor: "divider",
-          pb: `${safeBottom}px`,
+          pb: "env(safe-area-inset-bottom)",
         }}
       >
         <BottomNavigationAction

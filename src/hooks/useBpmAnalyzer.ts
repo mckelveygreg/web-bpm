@@ -6,10 +6,11 @@ import {
 import type { BpmDataPoint } from "../types";
 
 const THROTTLE_MS = 250;
-const CONVERGENCE_RATE = 0.25; // move 25% of the gap per tick
-const MAX_STEP = 6;           // cap per-tick movement to reject noise
-const RAW_WINDOW = 5;         // rolling median window on raw readings (~1.25s)
+const CONVERGENCE_RATE = 0.15; // move 15% of the gap per tick
+const MAX_STEP = 3;           // cap per-tick movement to reject noise
+const RAW_WINDOW = 8;         // rolling median window on raw readings (~2s)
 const MIN_COUNT = 1;          // ignore candidates with fewer peak matches
+const DISPLAY_SMOOTHING = 0.15; // EMA weight for new values (lower = smoother)
 
 type Candidate = { tempo: number; count: number };
 
@@ -74,6 +75,7 @@ export function useBpmAnalyzer() {
   const timeSeriesRef = useRef<BpmDataPoint[]>([]);
   const levelRafRef = useRef(0);
   const displayedBpmRef = useRef<number | null>(null);
+  const smoothedBpmRef = useRef<number | null>(null);
   const rawBpmWindow = useRef<number[]>([]);
   const fillTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
@@ -202,6 +204,7 @@ export function useBpmAnalyzer() {
     lastUpdateRef.current = 0;
     timeSeriesRef.current = [];
     displayedBpmRef.current = null;
+    smoothedBpmRef.current = null;
     rawBpmWindow.current = [];
     setIsActive(true);
     setTimeSeries([]);
@@ -246,7 +249,17 @@ export function useBpmAnalyzer() {
         }
         displayedBpmRef.current = displayed;
 
-        setCurrentBpm(displayed);
+        // EMA smoothing for stage-friendly display
+        const prevSmoothed = smoothedBpmRef.current;
+        const smoothed = prevSmoothed === null
+          ? displayed
+          : Math.round(
+              DISPLAY_SMOOTHING * displayed +
+              (1 - DISPLAY_SMOOTHING) * prevSmoothed,
+            );
+        smoothedBpmRef.current = smoothed;
+
+        setCurrentBpm(smoothed);
         setConfidence(top.count);
 
         setTimeSeries((prev) => {
@@ -254,7 +267,7 @@ export function useBpmAnalyzer() {
             ...prev,
             {
               timestamp: now - sTime,
-              bpm: displayed,
+              bpm: smoothed,
               confidence: top.count,
             },
           ];
@@ -266,6 +279,7 @@ export function useBpmAnalyzer() {
 
     analyzer.on("analyzerReset", () => {
       displayedBpmRef.current = null;
+      smoothedBpmRef.current = null;
       rawBpmWindow.current = [];
       setIsStable(false);
     });
