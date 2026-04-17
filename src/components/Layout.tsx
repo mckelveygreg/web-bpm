@@ -36,7 +36,7 @@ export default function Layout({ tab, onTabChange, children }: LayoutProps) {
       sx={{
         display: "flex",
         flexDirection: "column",
-        height: "100dvh",
+        height: "100%",
         bgcolor: "background.default",
       }}
     >

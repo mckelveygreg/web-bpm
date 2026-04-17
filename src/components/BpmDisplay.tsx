@@ -41,13 +41,13 @@ export default function BpmDisplay({
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        py: 3,
+        py: 1,
       }}
     >
       <Typography
         variant="h1"
         sx={{
-          fontSize: "6rem",
+          fontSize: "4.5rem",
           fontWeight: 700,
           lineHeight: 1,
           color: bpm ? "text.primary" : "text.disabled",
@@ -68,7 +68,7 @@ export default function BpmDisplay({
           display: "flex",
           alignItems: "center",
           gap: 1,
-          mt: 2,
+          mt: 1,
         }}
       >
         <Box

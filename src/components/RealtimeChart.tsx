@@ -49,7 +49,7 @@ export default function RealtimeChart({
   }, [data, targetBpm, windowMs]);
 
   return (
-    <Box sx={{ width: "100%", height: isSmall ? 200 : 280 }}>
+    <Box sx={{ width: "100%", height: isSmall ? 160 : 280 }}>
       <LineChart
         xAxis={[
           {
