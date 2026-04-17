@@ -1,0 +1,107 @@
+import { type ReactNode, useState, useCallback, useEffect } from "react";
+import {
+  AppBar,
+  BottomNavigation,
+  BottomNavigationAction,
+  Box,
+  IconButton,
+  Toolbar,
+  Typography,
+} from "@mui/material";
+import GraphicEqIcon from "@mui/icons-material/GraphicEq";
+import HistoryIcon from "@mui/icons-material/History";
+import TuneIcon from "@mui/icons-material/Tune";
+import GitHubIcon from "@mui/icons-material/GitHub";
+
+export type Tab = "live" | "sessions" | "tuner";
+
+interface LayoutProps {
+  tab: Tab;
+  onTabChange: (tab: Tab) => void;
+  children: ReactNode;
+}
+
+const REPO_URL = "https://github.com/mckelveygreg/web-bpm";
+
+export default function Layout({ tab, onTabChange, children }: LayoutProps) {
+  const [safeBottom, setSafeBottom] = useState(0);
+
+  useEffect(() => {
+    // Read CSS env var for safe area
+    const el = document.documentElement;
+    const val = getComputedStyle(el).getPropertyValue("--sab");
+    if (val) {
+      setSafeBottom(parseInt(val, 10) || 0);
+    }
+  }, []);
+
+  const handleTabChange = useCallback(
+    (_: unknown, value: string) => {
+      onTabChange(value as Tab);
+    },
+    [onTabChange],
+  );
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100dvh",
+        bgcolor: "background.default",
+      }}
+    >
+      <AppBar position="static" color="transparent" elevation={0}>
+        <Toolbar variant="dense">
+          <GraphicEqIcon sx={{ mr: 1, color: "primary.main" }} />
+          <Typography
+            variant="h6"
+            sx={{ flex: 1, fontWeight: 700, letterSpacing: 1 }}
+          >
+            Web BPM
+          </Typography>
+          <IconButton
+            href={REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="small"
+            color="inherit"
+            aria-label="View source on GitHub"
+          >
+            <GitHubIcon fontSize="small" />
+          </IconButton>
+        </Toolbar>
+      </AppBar>
+
+      <Box sx={{ flex: 1, overflow: "hidden" }}>{children}</Box>
+
+      <BottomNavigation
+        value={tab}
+        onChange={handleTabChange}
+        showLabels
+        sx={{
+          bgcolor: "background.paper",
+          borderTop: 1,
+          borderColor: "divider",
+          pb: `${safeBottom}px`,
+        }}
+      >
+        <BottomNavigationAction
+          label="Live"
+          value="live"
+          icon={<GraphicEqIcon />}
+        />
+        <BottomNavigationAction
+          label="Sessions"
+          value="sessions"
+          icon={<HistoryIcon />}
+        />
+        <BottomNavigationAction
+          label="Tuner"
+          value="tuner"
+          icon={<TuneIcon />}
+        />
+      </BottomNavigation>
+    </Box>
+  );
+}
