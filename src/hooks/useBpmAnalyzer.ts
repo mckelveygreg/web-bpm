@@ -170,9 +170,20 @@ export function useBpmAnalyzer() {
         lastUpdateRef.current = now;
 
         const win = bpmWindowRef.current;
+
+        // Outlier rejection: if we have an established reading, ignore wild jumps
+        if (win.length >= 3) {
+          const sorted = [...win].sort((a, b) => a - b);
+          const median = sorted[Math.floor(sorted.length / 2)]!;
+          if (Math.abs(raw - median) / median > 0.3) return;
+        }
+
         win.push(raw);
-        if (win.length > 10) win.shift();
-        const avg = Math.round(win.reduce((s, v) => s + v, 0) / win.length * 100) / 100;
+        if (win.length > 15) win.shift();
+
+        // Use median for display — robust to remaining outliers
+        const sorted = [...win].sort((a, b) => a - b);
+        const avg = sorted[Math.floor(sorted.length / 2)]!;
 
         setCurrentBpm(avg);
         setConfidence(top.count);
@@ -202,9 +213,18 @@ export function useBpmAnalyzer() {
         const raw = Math.round(top.tempo);
 
         const win = bpmWindowRef.current;
+
+        if (win.length >= 3) {
+          const sorted = [...win].sort((a, b) => a - b);
+          const median = sorted[Math.floor(sorted.length / 2)]!;
+          if (Math.abs(raw - median) / median > 0.3) return;
+        }
+
         win.push(raw);
-        if (win.length > 10) win.shift();
-        const avg = Math.round(win.reduce((s, v) => s + v, 0) / win.length * 100) / 100;
+        if (win.length > 15) win.shift();
+
+        const sorted = [...win].sort((a, b) => a - b);
+        const avg = sorted[Math.floor(sorted.length / 2)]!;
 
         setCurrentBpm(avg);
         setConfidence(top.count);
