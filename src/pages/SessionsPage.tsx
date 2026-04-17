@@ -51,9 +51,10 @@ function formatBytes(bytes: number): string {
 }
 
 function averageBpm(session: Session): number | null {
-  if (session.bpmTimeSeries.length === 0) return null;
-  const sum = session.bpmTimeSeries.reduce((acc, d) => acc + d.bpm, 0);
-  return Math.round(sum / session.bpmTimeSeries.length);
+  const valid = session.bpmTimeSeries.filter((d): d is typeof d & { bpm: number } => d.bpm !== null);
+  if (valid.length === 0) return null;
+  const sum = valid.reduce((acc, d) => acc + d.bpm, 0);
+  return Math.round(sum / valid.length);
 }
 
 function estimateSessionSize(session: Session): number {
