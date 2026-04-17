@@ -1,9 +1,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { execSync } from "node:child_process";
+
+const commitSha = execSync("git rev-parse --short HEAD").toString().trim();
 
 export default defineConfig({
   base: "/web-bpm/",
+  define: {
+    __COMMIT_SHA__: JSON.stringify(commitSha),
+    __APP_VERSION__: JSON.stringify(
+      process.env.npm_package_version ?? "0.0.0",
+    ),
+  },
   plugins: [
     react(),
     VitePWA({

@@ -49,6 +49,12 @@ export default function Layout({ tab, onTabChange, children }: LayoutProps) {
           >
             Web BPM
           </Typography>
+          <Typography
+            variant="caption"
+            sx={{ mr: 1, color: "text.secondary", fontFamily: "monospace" }}
+          >
+            {__APP_VERSION__} ({__COMMIT_SHA__})
+          </Typography>
           <IconButton
             href={REPO_URL}
             target="_blank"
