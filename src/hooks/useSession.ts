@@ -16,7 +16,7 @@ export interface UseSessionReturn {
   currentBpm: number | null;
   isStable: boolean;
   confidence: number;
-  timeSeries: { timestamp: number; bpm: number; confidence: number }[];
+  timeSeries: { timestamp: number; bpm: number | null; confidence: number }[];
   isActive: boolean;
   audioLevel: number;
   elapsed: number;

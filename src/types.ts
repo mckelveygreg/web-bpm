@@ -1,6 +1,6 @@
 export interface BpmDataPoint {
   timestamp: number;
-  bpm: number;
+  bpm: number | null;
   confidence: number;
 }
 

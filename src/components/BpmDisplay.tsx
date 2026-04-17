@@ -55,7 +55,7 @@ export default function BpmDisplay({
           fontVariantNumeric: "tabular-nums",
         }}
       >
-        {bpm ?? "—"}
+        {bpm !== null ? bpm.toFixed(2) : "—"}
       </Typography>
       <Typography
         variant="h6"

@@ -5,58 +5,8 @@ import {
 } from "realtime-bpm-analyzer";
 import type { BpmDataPoint } from "../types";
 
-const THROTTLE_MS = 250;
-const CONVERGENCE_RATE = 0.15; // move 15% of the gap per tick
-const MAX_STEP = 3;           // cap per-tick movement to reject noise
-const RAW_WINDOW = 8;         // rolling median window on raw readings (~2s)
-const MIN_COUNT = 1;          // ignore candidates with fewer peak matches
-const DISPLAY_SMOOTHING = 0.15; // EMA weight for new values (lower = smoother)
-
-type Candidate = { tempo: number; count: number };
-
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)]!;
-}
-
-/**
- * Pick the best candidate, preferring one near the target or current displayed BPM.
- * Falls back to the library's top candidate if nothing is close.
- */
-function pickCandidate(
-  candidates: ReadonlyArray<Candidate>,
-  anchor: number | null,
-): Candidate | null {
-  const valid = candidates.filter((c) => c.count >= MIN_COUNT);
-  if (valid.length === 0) return null;
-
-  if (anchor !== null) {
-    // Find the candidate closest to the anchor (target or displayed BPM)
-    let best = valid[0]!;
-    let bestDist = Math.abs(best.tempo - anchor);
-    for (let i = 1; i < valid.length; i++) {
-      const dist = Math.abs(valid[i]!.tempo - anchor);
-      if (dist < bestDist) {
-        best = valid[i]!;
-        bestDist = dist;
-      }
-    }
-    return best;
-  }
-
-  return valid[0]!;
-}
-
-/**
- * Snap a candidate to the same octave as the anchor.
- * Catches half-time / double-time flips from the analyzer.
- */
-function octaveCorrect(candidate: number, anchor: number): number {
-  let corrected = candidate;
-  while (corrected < anchor * 0.75) corrected *= 2;
-  while (corrected > anchor * 1.5) corrected /= 2;
-  return Math.round(corrected);
-}
+const THROTTLE_MS = 200;
+const MIN_CONFIDENCE = 2;
 
 export function useBpmAnalyzer() {
   const [currentBpm, setCurrentBpm] = useState<number | null>(null);
@@ -74,9 +24,7 @@ export function useBpmAnalyzer() {
   const lastUpdateRef = useRef(0);
   const timeSeriesRef = useRef<BpmDataPoint[]>([]);
   const levelRafRef = useRef(0);
-  const displayedBpmRef = useRef<number | null>(null);
-  const smoothedBpmRef = useRef<number | null>(null);
-  const rawBpmWindow = useRef<number[]>([]);
+  const bpmWindowRef = useRef<number[]>([]);
   const fillTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
   const targetBpmRef = useRef<number | null>(null);
@@ -171,17 +119,12 @@ export function useBpmAnalyzer() {
     analyserNodeRef.current = analyserNode;
     source.connect(analyserNode);
 
-    // Moderate gain to bring mic peaks above the library's 0.2 minimum threshold
-    // without boosting noise floor into peak range.
-    // Raw mic RMS ~5-10%, peak ~0.08-0.25 → gain 3x → peaks ~0.24-0.75
-    const gain = audioCtx.createGain();
-    gain.gain.value = 3;
 
-    source.connect(gain).connect(analyzer.node);
+    source.connect(analyzer.node);
 
     // Poll audio level from the raw analyser node (~60fps) with EMA smoothing
     const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
-    const SMOOTHING = 0.8; // 0 = no smoothing, 1 = frozen; 0.8 feels responsive but stable
+    const SMOOTHING = 0.8;
     let smoothedLevel = 0;
     const pollLevel = () => {
       analyserNode.getByteTimeDomainData(dataArray);
@@ -203,9 +146,7 @@ export function useBpmAnalyzer() {
     startTimeRef.current = sTime;
     lastUpdateRef.current = 0;
     timeSeriesRef.current = [];
-    displayedBpmRef.current = null;
-    smoothedBpmRef.current = null;
-    rawBpmWindow.current = [];
+    bpmWindowRef.current = [];
     setIsActive(true);
     setTimeSeries([]);
     setCurrentBpm(null);
@@ -214,62 +155,32 @@ export function useBpmAnalyzer() {
 
     analyzer.on(
       "bpm",
-      (data: { bpm: ReadonlyArray<Candidate> }) => {
+      (data: { bpm: ReadonlyArray<{ tempo: number; count: number }> }) => {
         const now = Date.now();
         if (now - lastUpdateRef.current < THROTTLE_MS) return;
-        lastUpdateRef.current = now;
 
-        // Prefer candidate near target BPM, then near displayed BPM, then top
-        const anchor = targetBpmRef.current ?? displayedBpmRef.current;
-        const top = pickCandidate(data.bpm, anchor);
+        const top = data.bpm[0];
         if (!top) return;
 
-        const rounded = Math.round(top.tempo);
+        const raw = Math.round(top.tempo);
+        const reliable = top.count >= MIN_CONFIDENCE;
 
-        // Rolling median on raw readings to reject outliers before convergence
-        const rw = rawBpmWindow.current;
-        rw.push(rounded);
-        if (rw.length > RAW_WINDOW) rw.shift();
-        const filtered = rw.length >= 3 ? median(rw) : rounded;
+        if (!reliable) return;
 
-        // Octave-correct then proportionally converge for stable output
-        const prev = displayedBpmRef.current;
-        let displayed: number;
-        if (prev === null) {
-          displayed = filtered;
-        } else {
-          const corrected = octaveCorrect(filtered, prev);
-          const delta = corrected - prev;
-          const absDelta = Math.abs(delta);
-          // Snap when close, otherwise move proportionally (capped)
-          const step = absDelta <= 2
-            ? absDelta
-            : Math.min(MAX_STEP, Math.max(1, Math.round(absDelta * CONVERGENCE_RATE)));
-          displayed = prev + Math.sign(delta) * step;
-        }
-        displayedBpmRef.current = displayed;
+        lastUpdateRef.current = now;
 
-        // EMA smoothing for stage-friendly display
-        const prevSmoothed = smoothedBpmRef.current;
-        const smoothed = prevSmoothed === null
-          ? displayed
-          : Math.round(
-              DISPLAY_SMOOTHING * displayed +
-              (1 - DISPLAY_SMOOTHING) * prevSmoothed,
-            );
-        smoothedBpmRef.current = smoothed;
+        const win = bpmWindowRef.current;
+        win.push(raw);
+        if (win.length > 10) win.shift();
+        const avg = Math.round(win.reduce((s, v) => s + v, 0) / win.length * 100) / 100;
 
-        setCurrentBpm(smoothed);
+        setCurrentBpm(avg);
         setConfidence(top.count);
 
         setTimeSeries((prev) => {
           const next = [
             ...prev,
-            {
-              timestamp: now - sTime,
-              bpm: smoothed,
-              confidence: top.count,
-            },
+            { timestamp: now - sTime, bpm: avg, confidence: top.count },
           ];
           timeSeriesRef.current = next;
           return next;
@@ -278,20 +189,24 @@ export function useBpmAnalyzer() {
     );
 
     analyzer.on("analyzerReset", () => {
-      displayedBpmRef.current = null;
-      smoothedBpmRef.current = null;
-      rawBpmWindow.current = [];
+      bpmWindowRef.current = [];
       setIsStable(false);
     });
 
     analyzer.on(
       "bpmStable",
-      (data: { bpm: ReadonlyArray<Candidate> }) => {
-        const anchor = targetBpmRef.current ?? displayedBpmRef.current;
-        const top = pickCandidate(data.bpm, anchor);
+      (data: { bpm: ReadonlyArray<{ tempo: number; count: number }> }) => {
+        const top = data.bpm[0];
         if (!top) return;
 
-        setCurrentBpm(Math.round(top.tempo));
+        const raw = Math.round(top.tempo);
+
+        const win = bpmWindowRef.current;
+        win.push(raw);
+        if (win.length > 10) win.shift();
+        const avg = Math.round(win.reduce((s, v) => s + v, 0) / win.length * 100) / 100;
+
+        setCurrentBpm(avg);
         setConfidence(top.count);
         setIsStable(true);
 
@@ -299,11 +214,7 @@ export function useBpmAnalyzer() {
         setTimeSeries((prev) => {
           const next = [
             ...prev,
-            {
-              timestamp: now - sTime,
-              bpm: Math.round(top.tempo),
-              confidence: top.count,
-            },
+            { timestamp: now - sTime, bpm: avg, confidence: top.count },
           ];
           timeSeriesRef.current = next;
           return next;
@@ -311,17 +222,14 @@ export function useBpmAnalyzer() {
       },
     );
 
-    // Fill timer: emit the last known BPM every second so the chart stays continuous
+    // Emit null data points every second when no real data arrives, so the chart keeps scrolling
     fillTimerRef.current = setInterval(() => {
-      const displayed = displayedBpmRef.current;
-      if (displayed === null) return;
       const now = Date.now();
-      // Only fill if no real data arrived in the last 1.5s
       if (now - lastUpdateRef.current < 1500) return;
       setTimeSeries((prev) => {
         const next = [
           ...prev,
-          { timestamp: now - sTime, bpm: displayed, confidence: 0 },
+          { timestamp: now - sTime, bpm: null, confidence: 0 },
         ];
         timeSeriesRef.current = next;
         return next;

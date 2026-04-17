@@ -23,7 +23,7 @@ export default function RealtimeChart({
   const { xData, yData, yMin, yMax } = useMemo(() => {
     if (data.length === 0) {
       const bpmCenter = targetBpm ?? 120;
-      return { xData: [0], yData: [null as unknown as number], yMin: bpmCenter - 20, yMax: bpmCenter + 20 };
+      return { xData: [0], yData: [null] as (number | null)[], yMin: bpmCenter - 20, yMax: bpmCenter + 20 };
     }
 
     const now = data[data.length - 1]!.timestamp;
@@ -31,18 +31,18 @@ export default function RealtimeChart({
     const visible = data.filter((d) => d.timestamp >= cutoff);
 
     const x = visible.map((d) => Math.round(d.timestamp / 1000));
-    const y = visible.map((d) => d.bpm);
+    const y: (number | null)[] = visible.map((d) => d.bpm ?? null);
 
-    const allBpm = [...y];
-    if (targetBpm) allBpm.push(targetBpm);
+    const validBpm = y.filter((v): v is number => v !== null);
+    if (targetBpm) validBpm.push(targetBpm);
 
-    const min = Math.min(...allBpm);
-    const max = Math.max(...allBpm);
+    const min = validBpm.length > 0 ? Math.min(...validBpm) : (targetBpm ?? 100);
+    const max = validBpm.length > 0 ? Math.max(...validBpm) : (targetBpm ?? 140);
     const padding = Math.max(5, (max - min) * 0.15);
 
     return {
       xData: x.length > 0 ? x : [0],
-      yData: y.length > 0 ? y : [null as unknown as number],
+      yData: y.length > 0 ? y : [null] as (number | null)[],
       yMin: Math.floor(min - padding),
       yMax: Math.ceil(max + padding),
     };

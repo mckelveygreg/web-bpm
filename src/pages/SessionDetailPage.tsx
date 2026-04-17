@@ -50,14 +50,18 @@ export default function SessionDetailPage({
       return { xData: [0], yData: [0], avgBpm: 0, minBpm: 0, maxBpm: 0 };
     }
     const x = session.bpmTimeSeries.map((d) => Math.round(d.timestamp / 1000));
-    const y = session.bpmTimeSeries.map((d) => d.bpm);
-    const avg = Math.round(y.reduce((a, b) => a + b, 0) / y.length);
+    const y: (number | null)[] = session.bpmTimeSeries.map((d) => d.bpm ?? null);
+    const valid = y.filter((v): v is number => v !== null);
+    if (valid.length === 0) {
+      return { xData: x, yData: y, avgBpm: 0, minBpm: 0, maxBpm: 0 };
+    }
+    const avg = Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
     return {
       xData: x,
       yData: y,
       avgBpm: avg,
-      minBpm: Math.min(...y),
-      maxBpm: Math.max(...y),
+      minBpm: Math.min(...valid),
+      maxBpm: Math.max(...valid),
     };
   }, [session]);
 
