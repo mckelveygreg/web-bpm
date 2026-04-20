@@ -51,7 +51,7 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2,onnx,json}"],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -75,4 +75,10 @@ export default defineConfig({
       },
     }),
   ],
+  optimizeDeps: {
+    exclude: ["onnxruntime-web"],
+  },
+  worker: {
+    format: "es",
+  },
 });

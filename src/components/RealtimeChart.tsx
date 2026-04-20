@@ -30,7 +30,7 @@ export default function RealtimeChart({
     const cutoff = now - windowMs;
     const visible = data.filter((d) => d.timestamp >= cutoff);
 
-    const x = visible.map((d) => Math.round(d.timestamp / 1000));
+    const x = visible.map((d) => d.timestamp / 1000);
     const y: (number | null)[] = visible.map((d) => d.bpm ?? null);
 
     const validBpm = y.filter((v): v is number => v !== null);
@@ -55,7 +55,7 @@ export default function RealtimeChart({
           {
             data: xData,
             scaleType: "linear",
-            valueFormatter: (v: number) => `${v}s`,
+            valueFormatter: (v: number) => `${Math.round(v)}s`,
           },
         ]}
         yAxis={[

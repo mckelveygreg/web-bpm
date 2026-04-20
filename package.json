@@ -9,7 +9,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "oxlint src/",
-    "format": "oxlint src/ --fix"
+    "format": "oxlint src/ --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -18,7 +20,9 @@
     "@mui/material": "^9.0.0",
     "@mui/system": "^9.0.0",
     "@mui/x-charts": "^9.0.2",
+    "fft.js": "^4.0.4",
     "idb": "^8.0.3",
+    "onnxruntime-web": "^1.24.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "realtime-bpm-analyzer": "^5.0.7",
@@ -33,6 +37,7 @@
     "oxlint": "^1.60.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.8",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.4"
   }
 }
