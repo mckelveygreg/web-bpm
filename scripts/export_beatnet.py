@@ -164,7 +164,6 @@ def export_onnx(output_path: str):
     # The dynamo exporter saves weights as external data by default.
     # Merge everything into a single self-contained ONNX file for the browser.
     import onnx
-    from onnx.external_data_helper import convert_model_to_external_data
     model = onnx.load(output_path, load_external_data=True)
     # Remove external data references and embed weights inline
     for tensor in model.graph.initializer:
@@ -230,7 +229,7 @@ def _triangular_filter(start, center, stop, num_bins, norm=False):
 def _build_log_filterbank(n_fft, sample_rate, num_bands_per_octave, fmin, fmax):
     """
     Build filterbank matrix matching madmom LogarithmicFilterbank exactly.
-    
+
     Uses log_frequencies → frequencies2bins(unique=True) → overlapping TriangularFilters.
     Returns shape (num_filter_bands, n_bins).
     """
@@ -279,12 +278,12 @@ def export_filterbank(output_path: str):
     print(f"  Filterbank shape: {filterbank.shape}")
     print(f"  Number of filter bands: {num_filter_bands}")
     print(f"  Feature dim (spec + diff): {feature_dim}")
-    
+
     if feature_dim != 272:
         print(f"  WARNING: Feature dim {feature_dim} != 272 (expected by model).")
         print(f"  The model's linear0 expects input dim = "
               f"2 * floor((dim_in - 10 + 1) / 2) = 2 * floor(({feature_dim} - 9) / 2)")
-        print(f"  Model was trained with dim_in=272, i.e. 136 bands x 2")
+        print("  Model was trained with dim_in=272, i.e. 136 bands x 2")
 
     # Hann window
     hann = np.hanning(win_length).tolist()
