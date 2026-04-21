@@ -1,5 +1,6 @@
 torch>=2.0
 onnx>=1.14
+onnxconverter-common>=1.13
 numpy<2
 BeatNet
 madmom
