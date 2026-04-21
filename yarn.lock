@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 8
+  version: 9
   cacheKey: 10c0
 
 "@apideck/better-ajv-errors@npm:^0.3.1":
@@ -4717,13 +4717,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"realtime-bpm-analyzer@npm:^5.0.7":
-  version: 5.0.7
-  resolution: "realtime-bpm-analyzer@npm:5.0.7"
-  checksum: 10c0/a1d7080818c727891ed9afef9fb506b8416e1b27fb02f6bce3b3df9322730fa3c504628b8bfe6286d374f4b0acb9fe62f01632beb1488554ae0ab89e8a35cf83
-  languageName: node
-  linkType: hard
-
 "reflect.getprototypeof@npm:^1.0.6, reflect.getprototypeof@npm:^1.0.9":
   version: 1.0.10
   resolution: "reflect.getprototypeof@npm:1.0.10"
@@ -5771,7 +5764,6 @@ __metadata:
     oxlint: "npm:^1.60.0"
     react: "npm:^19.2.5"
     react-dom: "npm:^19.2.5"
-    realtime-bpm-analyzer: "npm:^5.0.7"
     typescript: "npm:~6.0.2"
     uuid: "npm:^13.0.0"
     vite: "npm:^8.0.8"

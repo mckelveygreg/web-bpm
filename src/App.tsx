@@ -6,7 +6,6 @@ import LivePage from "./pages/LivePage";
 import SessionsPage from "./pages/SessionsPage";
 import SessionDetailPage from "./pages/SessionDetailPage";
 import TunerPage from "./pages/TunerPage";
-import AiBpmPage from "./pages/AiBpmPage";
 import InstallPrompt from "./components/InstallPrompt";
 
 export default function App() {
@@ -41,7 +40,6 @@ export default function App() {
           />
         )}
         {tab === "tuner" && <TunerPage />}
-        {tab === "ai-bpm" && <AiBpmPage />}
       </Layout>
       <InstallPrompt />
     </ThemeProvider>

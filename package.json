@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "packageManager": "yarn@4.13.0",
+  "packageManager": "yarn@4.14.1",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc -b && vite build",
@@ -25,7 +25,6 @@
     "onnxruntime-web": "^1.24.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "realtime-bpm-analyzer": "^5.0.7",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

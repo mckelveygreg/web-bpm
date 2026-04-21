@@ -11,10 +11,9 @@ import {
 import GraphicEqIcon from "@mui/icons-material/GraphicEq";
 import HistoryIcon from "@mui/icons-material/History";
 import TuneIcon from "@mui/icons-material/Tune";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
 import GitHubIcon from "@mui/icons-material/GitHub";
 
-export type Tab = "live" | "sessions" | "tuner" | "ai-bpm";
+export type Tab = "live" | "sessions" | "tuner";
 
 interface LayoutProps {
   tab: Tab;
@@ -96,11 +95,6 @@ export default function Layout({ tab, onTabChange, children }: LayoutProps) {
           label="Tuner"
           value="tuner"
           icon={<TuneIcon />}
-        />
-        <BottomNavigationAction
-          label="AI BPM"
-          value="ai-bpm"
-          icon={<SmartToyIcon />}
         />
       </BottomNavigation>
     </Box>

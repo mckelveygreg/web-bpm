@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
+  CircularProgress,
+  Collapse,
   FormControlLabel,
+  Stack,
   Switch,
   TextField,
-  Stack,
-  Chip,
-  Collapse,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
@@ -31,6 +32,8 @@ interface LiveControlsProps {
   onMetadataChange: (metadata: SessionMetadata) => void;
   onStart: (recordAudio: boolean) => void;
   onStop: () => void;
+  modelReady?: boolean;
+  modelLoading?: boolean;
   pipSupported?: boolean;
   pipActive?: boolean;
   onPipToggle?: () => void;
@@ -56,6 +59,8 @@ export default function LiveControls({
   onMetadataChange,
   onStart,
   onStop,
+  modelReady = true,
+  modelLoading = false,
   pipSupported,
   pipActive,
   onPipToggle,
@@ -195,11 +200,12 @@ export default function LiveControls({
             variant="contained"
             color="primary"
             size="large"
-            startIcon={<PlayArrowIcon />}
+            startIcon={modelLoading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
             onClick={() => onStart(recordAudio)}
+            disabled={modelLoading || !modelReady}
             fullWidth
           >
-            Start Session
+            {modelLoading ? "Preparing AI Engine…" : "Start Session"}
           </Button>
         ) : (
           <>

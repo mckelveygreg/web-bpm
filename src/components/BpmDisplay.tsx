@@ -15,13 +15,13 @@ const pulse = keyframes`
 
 function getStabilityColor(isStable: boolean, confidence: number): string {
   if (isStable) return "#4caf50"; // green
-  if (confidence >= 10) return "#ff9800"; // orange/yellow
+  if (confidence >= 0.1) return "#ff9800"; // orange/yellow
   return "#f44336"; // red
 }
 
 function getStabilityLabel(isStable: boolean, confidence: number): string {
   if (isStable) return "Locked";
-  if (confidence >= 10) return "Settling";
+  if (confidence >= 0.1) return "Settling";
   return "Listening";
 }
 

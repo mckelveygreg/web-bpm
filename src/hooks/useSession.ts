@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { useBpmAnalyzer } from "./useBpmAnalyzer";
+import { useBeatNetAnalyzer } from "./useBeatNetAnalyzer";
 import { useAudioRecorder } from "./useAudioRecorder";
 import { saveSession } from "../services/db";
 import type { Session } from "../types";
@@ -21,6 +21,9 @@ export interface UseSessionReturn {
   audioLevel: number;
   elapsed: number;
   isRecordingAudio: boolean;
+  modelReady: boolean;
+  modelLoading: boolean;
+  initModel: () => void;
   metadata: SessionMetadata;
   setMetadata: React.Dispatch<React.SetStateAction<SessionMetadata>>;
   setTargetBpm: (bpm: number | null) => void;
@@ -29,7 +32,7 @@ export interface UseSessionReturn {
 }
 
 export function useSession(): UseSessionReturn {
-  const bpm = useBpmAnalyzer();
+  const bpm = useBeatNetAnalyzer();
   const recorder = useAudioRecorder();
 
   const [elapsed, setElapsed] = useState(0);
@@ -52,8 +55,8 @@ export function useSession(): UseSessionReturn {
 
   const setTargetBpm = useCallback((val: number | null) => {
     targetBpmRef.current = val;
-    bpm.setTargetBpm(val);
-  }, [bpm.setTargetBpm]);
+    bpm.setTempoPrior(val);
+  }, [bpm.setTempoPrior]);
 
   // Keep stable refs so stop() always sees latest function versions
   const bpmStopRef = useRef(bpm.stop);
@@ -152,6 +155,9 @@ export function useSession(): UseSessionReturn {
     audioLevel: bpm.audioLevel,
     elapsed,
     isRecordingAudio: recorder.isRecording,
+    modelReady: bpm.modelReady,
+    modelLoading: bpm.modelLoading,
+    initModel: bpm.initModel,
     metadata,
     setMetadata,
     setTargetBpm,

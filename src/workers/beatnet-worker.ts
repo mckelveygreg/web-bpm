@@ -31,6 +31,7 @@ import {
   computeFeatures,
   createParticleFilter,
   updateParticleFilter,
+  resyncPhases,
 } from "./beatnet-core";
 
 // ---------------------------------------------------------------------------
@@ -190,7 +191,10 @@ async function processHop(samples: Float32Array) {
         const diff = (ssConfig.tempi[pf.tempoIdx[i]!] ?? 0) - rawBpm;
         variance += pf.particles[i]! * diff * diff;
       }
-      const confidence = Math.max(0, 1 - Math.sqrt(variance) / rawBpm);
+      // Scale coefficient of variation so "Locked" (conf > 0.5) requires
+      // particle spread < ~6% of BPM — much tighter than the previous 1x scale.
+      const cv = Math.sqrt(variance) / rawBpm;
+      const confidence = Math.max(0, Math.min(1, 1 - cv * 8));
 
       self.postMessage({
         type: "bpm",
@@ -216,8 +220,13 @@ async function drainQueue() {
   if (processing) return;
   processing = true;
   while (hopQueue.length > 0) {
-    if (hopQueue.length > 5) {
-      hopQueue.splice(0, hopQueue.length - 2);
+    if (hopQueue.length > 20) {
+      // Keep the 3 most recent frames and discard the rest.
+      // The dropped frames create a temporal discontinuity, so re-randomize
+      // beat-phase state — tempo weights (which BPM cluster has won) are
+      // preserved so the filter doesn't have to re-converge from scratch.
+      hopQueue.splice(0, hopQueue.length - 3);
+      if (pf && ssConfig) resyncPhases(pf, ssConfig);
     }
     const samples = hopQueue.shift()!;
     await processHop(samples);

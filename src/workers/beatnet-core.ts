@@ -368,6 +368,25 @@ export function updateParticleFilter(
   return bpmEstimate;
 }
 
+/**
+ * Randomize particle phases while preserving tempo weights.
+ *
+ * Call this after audio frames have been dropped (temporal discontinuity)
+ * so beat-phase tracking can re-sync without discarding tempo knowledge.
+ * The filter's tempo estimate (which particles survived, their weights)
+ * is kept intact — only the per-particle beat-phase is re-randomized.
+ */
+export function resyncPhases(
+  pf: ParticleFilterState,
+  ssConfig: StateSpacesConfig,
+): void {
+  for (let i = 0; i < pf.numParticles; i++) {
+    const interval = ssConfig.intervals[pf.tempoIdx[i]!]!;
+    pf.phases[i] = Math.random() * interval;
+  }
+  // pf.particles (weights) are intentionally left unchanged.
+}
+
 function systematicResample(
   pf: ParticleFilterState,
   _ssConfig: StateSpacesConfig,

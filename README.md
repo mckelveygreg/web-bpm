@@ -24,7 +24,7 @@ A mobile-first progressive web app for tracking beats per minute in realtime. Bu
 - [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
 - [Vite](https://vite.dev/) + [vite-plugin-pwa](https://vite-pwa-org.netlify.app/)
 - [MUI (Material UI)](https://mui.com/) + [MUI X Charts](https://mui.com/x/react-charts/)
-- [realtime-bpm-analyzer](https://github.com/dlepaux/realtime-bpm-analyzer) — Web Audio API BPM detection
+- [ONNX Runtime Web](https://onnxruntime.ai/) + [BeatNet CRNN](https://github.com/madmom-tools/madmom) — Deep learning tempo detection via particle filtering
 - [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) via [idb](https://github.com/jakearchibald/idb) — Client-side session storage
 
 ## Getting Started
