@@ -112,6 +112,8 @@ async function init(baseUrl: string) {
 }
 
 function resetLSTM() {
+  hState?.dispose?.();
+  cState?.dispose?.();
   const stateData = new Float32Array(2 * 1 * 150);
   hState = new ort.Tensor("float32", stateData.slice(), [2, 1, 150]);
   cState = new ort.Tensor("float32", stateData.slice(), [2, 1, 150]);
@@ -134,6 +136,8 @@ async function runInference(
   if (!session) throw new Error("Session not initialized");
 
   const inputTensor = new ort.Tensor("float32", features, [1, 1, 272]);
+  const prevHState = hState;
+  const prevCState = cState;
 
   const results = await session.run({
     input: inputTensor,
@@ -141,15 +145,26 @@ async function runInference(
     c_in: cState,
   });
 
-  hState = results["h_out"] as ort.Tensor;
-  cState = results["c_out"] as ort.Tensor;
+  inputTensor.dispose?.();
 
-  const output = results["output"]!.data as Float32Array;
+  const hOut = results["h_out"] as ort.Tensor;
+  const cOut = results["c_out"] as ort.Tensor;
+  const outputTensor = results["output"] as ort.Tensor;
 
-  const maxVal = Math.max(output[0]!, output[1]!, output[2]!);
-  const exp0 = Math.exp(output[0]! - maxVal);
-  const exp1 = Math.exp(output[1]! - maxVal);
-  const exp2 = Math.exp(output[2]! - maxVal);
+  // Copy logits before disposing transient outputs.
+  const logits = Array.from(outputTensor.data as Float32Array);
+
+  hState = hOut;
+  cState = cOut;
+
+  outputTensor.dispose?.();
+  prevHState?.dispose?.();
+  prevCState?.dispose?.();
+
+  const maxVal = Math.max(logits[0]!, logits[1]!, logits[2]!);
+  const exp0 = Math.exp(logits[0]! - maxVal);
+  const exp1 = Math.exp(logits[1]! - maxVal);
+  const exp2 = Math.exp(logits[2]! - maxVal);
   const sumExp = exp0 + exp1 + exp2;
 
   return {

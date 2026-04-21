@@ -3,6 +3,8 @@ import type { BpmDataPoint } from "../types";
 import beatnetWorkerUrl from "../workers/beatnet-worker.ts?worker&url";
 
 const SAMPLE_RATE = 22050;
+const UI_UPDATE_MS = 200;
+const MAX_SERIES_POINTS = 1800;
 
 export function useBeatNetAnalyzer() {
   const [currentBpm, setCurrentBpm] = useState<number | null>(null);
@@ -24,6 +26,7 @@ export function useBeatNetAnalyzer() {
   const timeSeriesRef = useRef<BpmDataPoint[]>([]);
   const startTimeRef = useRef(0);
   const lastUpdateRef = useRef(0);
+  const lastUiUpdateRef = useRef(0);
   const fillTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bpmWindowRef = useRef<number[]>([]);
   const tempoPriorRef = useRef<number | null>(null);
@@ -131,6 +134,9 @@ export function useBeatNetAnalyzer() {
       const data = e.data;
       if (data.type === "bpm") {
         const now = Date.now();
+        if (now - lastUiUpdateRef.current < UI_UPDATE_MS) return;
+        lastUiUpdateRef.current = now;
+
         let raw = data.bpm as number;
         const conf = data.confidence as number;
 
@@ -178,8 +184,12 @@ export function useBeatNetAnalyzer() {
               confidence: conf,
             },
           ];
-          timeSeriesRef.current = next;
-          return next;
+          const trimmed =
+            next.length > MAX_SERIES_POINTS
+              ? next.slice(next.length - MAX_SERIES_POINTS)
+              : next;
+          timeSeriesRef.current = trimmed;
+          return trimmed;
         });
       }
     },
@@ -256,6 +266,7 @@ export function useBeatNetAnalyzer() {
     const sTime = Date.now();
     startTimeRef.current = sTime;
     lastUpdateRef.current = 0;
+    lastUiUpdateRef.current = 0;
     timeSeriesRef.current = [];
     bpmWindowRef.current = [];
     setIsActive(true);
@@ -273,8 +284,12 @@ export function useBeatNetAnalyzer() {
           ...prev,
           { timestamp: now - sTime, bpm: null, confidence: 0 },
         ];
-        timeSeriesRef.current = next;
-        return next;
+        const trimmed =
+          next.length > MAX_SERIES_POINTS
+            ? next.slice(next.length - MAX_SERIES_POINTS)
+            : next;
+        timeSeriesRef.current = trimmed;
+        return trimmed;
       });
     }, 1000);
 
