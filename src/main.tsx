@@ -2,12 +2,16 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App";
-import { setPwaRegistration, setPwaUpdateService } from "./services/pwaUpdate";
+import {
+  markPwaUpdateReady,
+  setPwaRegistration,
+  setPwaUpdateService,
+} from "./services/pwaUpdate";
 
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    void updateSW(true);
+    markPwaUpdateReady();
   },
   onRegisteredSW(_swUrl, registration) {
     setPwaRegistration(registration);

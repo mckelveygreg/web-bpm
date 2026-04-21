@@ -2,6 +2,7 @@ type UpdateServiceWorker = (reloadPage?: boolean) => Promise<void>;
 
 let updateServiceWorker: UpdateServiceWorker | null = null;
 let swRegistration: ServiceWorkerRegistration | null = null;
+let updateReady = false;
 
 export function setPwaUpdateService(fn: UpdateServiceWorker) {
   updateServiceWorker = fn;
@@ -11,16 +12,21 @@ export function setPwaRegistration(registration?: ServiceWorkerRegistration) {
   swRegistration = registration ?? null;
 }
 
+export function markPwaUpdateReady() {
+  updateReady = true;
+}
+
 export async function refreshToLatestVersion(): Promise<boolean> {
   if (swRegistration) {
     await swRegistration.update();
   }
 
-  if (!updateServiceWorker) {
+  if (!updateServiceWorker || !updateReady) {
     return false;
   }
 
   await updateServiceWorker(true);
+  updateReady = false;
   return true;
 }
 
