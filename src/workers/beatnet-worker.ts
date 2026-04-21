@@ -70,10 +70,12 @@ async function init(baseUrl: string) {
   try {
     const publicBase = new URL(baseUrl, self.location.origin);
     const modelsBase = new URL("models/", publicBase);
+    console.log("[BeatNet] Loading from:", modelsBase.href);
 
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.wasmPaths = { wasm: ortWasmUrl };
 
+    console.log("[BeatNet] Fetching model configs...");
     const [fbResp, ssResp] = await Promise.all([
       fetch(new URL("filterbank.json", modelsBase)),
       fetch(new URL("state_spaces.json", modelsBase)),
@@ -82,6 +84,7 @@ async function init(baseUrl: string) {
     const fbConfig = (await requireOk(fbResp, "filterbank config").json()) as FilterbankConfig;
     ssConfig = (await requireOk(ssResp, "state space config").json()) as StateSpacesConfig;
 
+    console.log("[BeatNet] Creating ONNX session...");
     session = await ort.InferenceSession.create(
       new URL("beatnet.onnx", modelsBase).href,
       {
@@ -90,15 +93,19 @@ async function init(baseUrl: string) {
       },
     );
 
+    console.log("[BeatNet] Initializing state...");
     specState = createSpectrogramState(fbConfig);
     pf = createParticleFilter(ssConfig, 1500, BPM_WINDOW_SIZE, tempoPriorBpm);
     resetLSTM();
 
+    console.log("[BeatNet] Ready!");
     self.postMessage({ type: "ready" });
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[BeatNet] Initialization failed:", errMsg, err);
     self.postMessage({
       type: "error",
-      message: err instanceof Error ? err.message : String(err),
+      message: errMsg,
     });
   }
 }

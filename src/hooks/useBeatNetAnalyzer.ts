@@ -103,6 +103,12 @@ export function useBeatNetAnalyzer() {
     workerRef.current = worker;
 
     return new Promise<void>((resolve, reject) => {
+      worker.onerror = (event) => {
+        console.error("Worker error:", event.message, event.filename, event.lineno);
+        setModelLoading(false);
+        reject(new Error(event.message));
+      };
+
       worker.onmessage = (e) => {
         const data = e.data;
         if (data.type === "ready") {
@@ -185,7 +191,12 @@ export function useBeatNetAnalyzer() {
   const start = useCallback(async (): Promise<MediaStream> => {
     // Initialize model if not ready
     if (!workerRef.current) {
-      await initModel();
+      try {
+        await initModel();
+      } catch (err) {
+        console.error("Failed to initialize BeatNet model:", err);
+        throw err;
+      }
     }
 
     if (!audioContextRef.current) {
