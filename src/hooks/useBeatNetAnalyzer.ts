@@ -217,11 +217,20 @@ export function useBeatNetAnalyzer() {
   );
 
   const start = useCallback(async (): Promise<MediaStream> => {
-    // Initialize model if not ready
+    // Ask for mic access first. This avoids paying model startup costs
+    // when permission is denied and defers heavy init until user intent
+    // is confirmed.
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // Initialize model if not ready.
+    // If this fails, release the microphone before bubbling the error.
     if (!workerRef.current) {
       try {
         await initModel();
       } catch (err) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
         console.error("Failed to initialize BeatNet model:", err);
         throw err;
       }
@@ -236,7 +245,6 @@ export function useBeatNetAnalyzer() {
       await audioCtx.resume();
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
 
     // Register AudioWorklet processor from a plain JS file so Safari can parse it.

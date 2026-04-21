@@ -106,7 +106,7 @@ async function init(baseUrl: string, nextMobileProfile = false) {
       new URL("beatnet.onnx", modelsBase).href,
       {
         executionProviders: ["wasm"],
-        graphOptimizationLevel: "all",
+        graphOptimizationLevel: mobileProfile ? "basic" : "all",
       },
     );
 

@@ -51,7 +51,9 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2,onnx,json}"],
+        // Keep large ML assets out of precache to reduce install/update
+        // memory pressure on mobile Safari.
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
