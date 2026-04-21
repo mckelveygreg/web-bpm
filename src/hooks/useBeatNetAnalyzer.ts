@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BpmDataPoint } from "../types";
+import beatnetWorkerUrl from "../workers/beatnet-worker.ts?worker&url";
+import beatnetProcessorSource from "../workers/beatnet-processor.ts?raw";
 
 const SAMPLE_RATE = 22050;
 
@@ -96,10 +98,7 @@ export function useBeatNetAnalyzer() {
     if (workerRef.current || modelLoading) return;
     setModelLoading(true);
 
-    const worker = new Worker(
-      new URL("../workers/beatnet-worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    const worker = new Worker(beatnetWorkerUrl, { type: "module" });
     workerRef.current = worker;
 
     return new Promise<void>((resolve, reject) => {
@@ -212,11 +211,18 @@ export function useBeatNetAnalyzer() {
     streamRef.current = stream;
 
     // Register AudioWorklet processor
-    const processorUrl = new URL(
-      "../workers/beatnet-processor.ts",
-      import.meta.url,
-    ).href;
-    await audioCtx.audioWorklet.addModule(processorUrl);
+    // Loading `.ts?url` can emit a `data:video/mp2t` URL (from the `.ts` MIME map),
+    // which browsers reject for AudioWorklet modules. Use raw source + Blob with
+    // explicit JavaScript MIME so deployed builds load reliably.
+    const processorBlob = new Blob([beatnetProcessorSource], {
+      type: "text/javascript",
+    });
+    const processorUrl = URL.createObjectURL(processorBlob);
+    try {
+      await audioCtx.audioWorklet.addModule(processorUrl);
+    } finally {
+      URL.revokeObjectURL(processorUrl);
+    }
 
     const workletNode = new AudioWorkletNode(audioCtx, "beatnet-processor");
     workletNodeRef.current = workletNode;

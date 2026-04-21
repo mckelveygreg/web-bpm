@@ -12,18 +12,25 @@ import GraphicEqIcon from "@mui/icons-material/GraphicEq";
 import HistoryIcon from "@mui/icons-material/History";
 import TuneIcon from "@mui/icons-material/Tune";
 import GitHubIcon from "@mui/icons-material/GitHub";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 export type Tab = "live" | "sessions" | "tuner";
 
 interface LayoutProps {
   tab: Tab;
   onTabChange: (tab: Tab) => void;
+  onRefreshApp: () => void;
   children: ReactNode;
 }
 
 const REPO_URL = "https://github.com/mckelveygreg/web-bpm";
 
-export default function Layout({ tab, onTabChange, children }: LayoutProps) {
+export default function Layout({
+  tab,
+  onTabChange,
+  onRefreshApp,
+  children,
+}: LayoutProps) {
   const handleTabChange = useCallback(
     (_: unknown, value: string) => {
       onTabChange(value as Tab);
@@ -55,6 +62,15 @@ export default function Layout({ tab, onTabChange, children }: LayoutProps) {
           >
             {__APP_VERSION__} ({__COMMIT_SHA__})
           </Typography>
+          <IconButton
+            onClick={onRefreshApp}
+            size="small"
+            color="inherit"
+            aria-label="Refresh app"
+            title="Check for update and refresh"
+          >
+            <RefreshIcon fontSize="small" />
+          </IconButton>
           <IconButton
             href={REPO_URL}
             target="_blank"
