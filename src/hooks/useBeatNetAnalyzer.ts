@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BpmDataPoint } from "../types";
 import beatnetWorkerUrl from "../workers/beatnet-worker.ts?worker&url";
-import beatnetProcessorSource from "../workers/beatnet-processor.ts?raw";
 
 const SAMPLE_RATE = 22050;
 
@@ -210,19 +209,9 @@ export function useBeatNetAnalyzer() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
 
-    // Register AudioWorklet processor
-    // Loading `.ts?url` can emit a `data:video/mp2t` URL (from the `.ts` MIME map),
-    // which browsers reject for AudioWorklet modules. Use raw source + Blob with
-    // explicit JavaScript MIME so deployed builds load reliably.
-    const processorBlob = new Blob([beatnetProcessorSource], {
-      type: "text/javascript",
-    });
-    const processorUrl = URL.createObjectURL(processorBlob);
-    try {
-      await audioCtx.audioWorklet.addModule(processorUrl);
-    } finally {
-      URL.revokeObjectURL(processorUrl);
-    }
+    // Register AudioWorklet processor from a plain JS file so Safari can parse it.
+    const processorUrl = `${import.meta.env.BASE_URL}worklets/beatnet-processor.js?v=${__COMMIT_SHA__}`;
+    await audioCtx.audioWorklet.addModule(processorUrl);
 
     const workletNode = new AudioWorkletNode(audioCtx, "beatnet-processor");
     workletNodeRef.current = workletNode;
