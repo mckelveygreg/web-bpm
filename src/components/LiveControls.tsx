@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -14,6 +14,7 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
 import MicIcon from "@mui/icons-material/Mic";
 import MetronomeIcon from "@mui/icons-material/Timer";
+import TouchAppIcon from "@mui/icons-material/TouchApp";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import PictureInPictureAltIcon from "@mui/icons-material/PictureInPictureAlt";
@@ -68,6 +69,11 @@ export default function LiveControls({
   const [targetBpmInput, setTargetBpmInput] = useState(
     targetBpm?.toString() ?? "",
   );
+  const tapTimesRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    setTargetBpmInput(targetBpm?.toString() ?? "");
+  }, [targetBpm]);
 
   const commitTargetBpm = () => {
     if (!targetBpmInput) {
@@ -80,6 +86,33 @@ export default function LiveControls({
     } else {
       // Revert invalid input
       setTargetBpmInput(targetBpm?.toString() ?? "");
+    }
+  };
+
+  const handleTapTempo = () => {
+    const now = Date.now();
+    const tapTimes = tapTimesRef.current;
+
+    if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1]! > 2000) {
+      tapTimes.length = 0;
+    }
+
+    tapTimes.push(now);
+    if (tapTimes.length > 5) tapTimes.shift();
+    if (tapTimes.length < 2) return;
+
+    const intervals: number[] = [];
+    for (let index = 1; index < tapTimes.length; index++) {
+      intervals.push(tapTimes[index]! - tapTimes[index - 1]!);
+    }
+
+    const averageInterval =
+      intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+    const bpm = Math.round(60000 / averageInterval);
+
+    if (bpm >= 30 && bpm <= 300) {
+      setTargetBpmInput(String(bpm));
+      onTargetBpmChange(bpm);
     }
   };
 
@@ -116,15 +149,28 @@ export default function LiveControls({
             fullWidth
           />
 
-          <Button
-            variant={metronomeActive ? "contained" : "outlined"}
-            color="secondary"
-            startIcon={<MetronomeIcon />}
-            onClick={onMetronomeToggle}
-            disabled={!targetBpm}
-          >
-            {metronomeActive ? "Stop Metronome" : "Metronome"}
-          </Button>
+          <Stack direction="row" spacing={1.5}>
+            <Button
+              variant={metronomeActive ? "contained" : "outlined"}
+              color="secondary"
+              startIcon={<MetronomeIcon />}
+              onClick={onMetronomeToggle}
+              disabled={!targetBpm}
+              fullWidth
+            >
+              {metronomeActive ? "Stop Metronome" : "Metronome"}
+            </Button>
+
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<TouchAppIcon />}
+              onClick={handleTapTempo}
+              fullWidth
+            >
+              Tap Tempo
+            </Button>
+          </Stack>
 
           <FormControlLabel
             control={
