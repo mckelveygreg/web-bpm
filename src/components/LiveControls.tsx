@@ -32,7 +32,6 @@ interface LiveControlsProps {
   onMetadataChange: (metadata: SessionMetadata) => void;
   onStart: (recordAudio: boolean) => void;
   onStop: () => void;
-  modelReady?: boolean;
   modelLoading?: boolean;
   pipSupported?: boolean;
   pipActive?: boolean;
@@ -59,7 +58,6 @@ export default function LiveControls({
   onMetadataChange,
   onStart,
   onStop,
-  modelReady = true,
   modelLoading = false,
   pipSupported,
   pipActive,
@@ -202,7 +200,7 @@ export default function LiveControls({
             size="large"
             startIcon={modelLoading ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
             onClick={() => onStart(recordAudio)}
-            disabled={modelLoading || !modelReady}
+            disabled={modelLoading}
             fullWidth
           >
             {modelLoading ? "Preparing AI Engine…" : "Start Session"}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Box, Snackbar, Alert } from "@mui/material";
 import BpmDisplay from "../components/BpmDisplay";
 import RealtimeChart from "../components/RealtimeChart";
@@ -11,13 +11,6 @@ export default function LivePage() {
   const session = useSession();
   const metronome = useMetronome();
   const pip = usePictureInPicture();
-
-  // Auto-load the AI model as soon as the Live page mounts.
-  // initModel is idempotent — safe to call even if already loading/loaded.
-  useEffect(() => {
-    void session.initModel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Keep PiP canvas in sync with live BPM state
   pip.update({
@@ -128,7 +121,6 @@ export default function LivePage() {
           onMetadataChange={session.setMetadata}
           onStart={handleStart}
           onStop={handleStop}
-          modelReady={session.modelReady}
           modelLoading={session.modelLoading}
           pipSupported={pip.isSupported}
           pipActive={pip.isActive}
