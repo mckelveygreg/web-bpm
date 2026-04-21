@@ -50,8 +50,22 @@ let frameCount = 0;
 let hopQueue: Float32Array[] = [];
 let processing = false;
 let tempoPriorBpm: number | null = null;
+let mobileProfile = false;
+let lastPostedAt = 0;
 
 const BPM_WINDOW_SIZE = 25;
+const DEFAULT_PARTICLE_COUNT = 1500;
+const MOBILE_PARTICLE_COUNT = 600;
+const DEFAULT_POST_INTERVAL_MS = 100;
+const MOBILE_POST_INTERVAL_MS = 300;
+
+function getParticleCount() {
+  return mobileProfile ? MOBILE_PARTICLE_COUNT : DEFAULT_PARTICLE_COUNT;
+}
+
+function getPostIntervalMs() {
+  return mobileProfile ? MOBILE_POST_INTERVAL_MS : DEFAULT_POST_INTERVAL_MS;
+}
 
 function requireOk(response: Response, assetName: string) {
   if (!response.ok) {
@@ -67,8 +81,10 @@ function requireOk(response: Response, assetName: string) {
 // Initialization
 // ---------------------------------------------------------------------------
 
-async function init(baseUrl: string) {
+async function init(baseUrl: string, nextMobileProfile = false) {
   try {
+    mobileProfile = nextMobileProfile;
+    lastPostedAt = 0;
     const publicBase = new URL(baseUrl, self.location.origin);
     const modelsBase = new URL("models/", publicBase);
     console.log("[BeatNet] Loading from:", modelsBase.href);
@@ -96,7 +112,12 @@ async function init(baseUrl: string) {
 
     console.log("[BeatNet] Initializing state...");
     specState = createSpectrogramState(fbConfig);
-    pf = createParticleFilter(ssConfig, 1500, BPM_WINDOW_SIZE, tempoPriorBpm);
+    pf = createParticleFilter(
+      ssConfig,
+      getParticleCount(),
+      BPM_WINDOW_SIZE,
+      tempoPriorBpm,
+    );
     resetLSTM();
 
     console.log("[BeatNet] Ready!");
@@ -122,8 +143,16 @@ function resetLSTM() {
 function resetAll() {
   resetLSTM();
   frameCount = 0;
+  lastPostedAt = 0;
   if (specState) resetSpectrogramState(specState);
-  if (ssConfig) pf = createParticleFilter(ssConfig, 1500, BPM_WINDOW_SIZE, tempoPriorBpm);
+  if (ssConfig) {
+    pf = createParticleFilter(
+      ssConfig,
+      getParticleCount(),
+      BPM_WINDOW_SIZE,
+      tempoPriorBpm,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,13 +240,17 @@ async function processHop(samples: Float32Array) {
       const cv = Math.sqrt(variance) / rawBpm;
       const confidence = Math.max(0, Math.min(1, 1 - cv * 8));
 
-      self.postMessage({
-        type: "bpm",
-        bpm: Math.round(bpm * 100) / 100,
-        beat: isBeat,
-        downbeat: isDownbeat,
-        confidence,
-      });
+      const now = Date.now();
+      if (now - lastPostedAt >= getPostIntervalMs()) {
+        lastPostedAt = now;
+        self.postMessage({
+          type: "bpm",
+          bpm: Math.round(bpm * 100) / 100,
+          beat: isBeat,
+          downbeat: isDownbeat,
+          confidence,
+        });
+      }
     }
   } catch (err) {
     self.postMessage({
@@ -257,7 +290,10 @@ self.onmessage = (e: MessageEvent) => {
   const data = e.data;
   switch (data.type) {
     case "init":
-      void init(data.baseUrl as string);
+      void init(
+        data.baseUrl as string,
+        Boolean((data as { mobileProfile?: boolean }).mobileProfile),
+      );
       break;
     case "hop":
       hopQueue.push(data.samples as Float32Array);

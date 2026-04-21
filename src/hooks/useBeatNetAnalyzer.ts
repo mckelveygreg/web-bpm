@@ -4,7 +4,15 @@ import beatnetWorkerUrl from "../workers/beatnet-worker.ts?worker&url";
 
 const SAMPLE_RATE = 22050;
 const UI_UPDATE_MS = 200;
+const MOBILE_UI_UPDATE_MS = 400;
 const MAX_SERIES_POINTS = 1800;
+const MOBILE_MAX_SERIES_POINTS = 900;
+const AUDIO_LEVEL_UPDATE_MS = 100;
+const MOBILE_AUDIO_LEVEL_UPDATE_MS = 250;
+
+function isMobileRuntime() {
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+}
 
 export function useBeatNetAnalyzer() {
   const [currentBpm, setCurrentBpm] = useState<number | null>(null);
@@ -27,9 +35,11 @@ export function useBeatNetAnalyzer() {
   const startTimeRef = useRef(0);
   const lastUpdateRef = useRef(0);
   const lastUiUpdateRef = useRef(0);
+  const lastAudioLevelUpdateRef = useRef(0);
   const fillTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bpmWindowRef = useRef<number[]>([]);
   const tempoPriorRef = useRef<number | null>(null);
+  const mobileProfileRef = useRef(isMobileRuntime());
 
   const setTempoPrior = useCallback((bpm: number | null) => {
     tempoPriorRef.current = bpm;
@@ -125,7 +135,11 @@ export function useBeatNetAnalyzer() {
         }
       };
 
-      worker.postMessage({ type: "init", baseUrl: import.meta.env.BASE_URL });
+      worker.postMessage({
+        type: "init",
+        baseUrl: import.meta.env.BASE_URL,
+        mobileProfile: mobileProfileRef.current,
+      });
     });
   }, [modelLoading]);
 
@@ -134,7 +148,10 @@ export function useBeatNetAnalyzer() {
       const data = e.data;
       if (data.type === "bpm") {
         const now = Date.now();
-        if (now - lastUiUpdateRef.current < UI_UPDATE_MS) return;
+        const uiUpdateMs = mobileProfileRef.current
+          ? MOBILE_UI_UPDATE_MS
+          : UI_UPDATE_MS;
+        if (now - lastUiUpdateRef.current < uiUpdateMs) return;
         lastUiUpdateRef.current = now;
 
         let raw = data.bpm as number;
@@ -184,9 +201,12 @@ export function useBeatNetAnalyzer() {
               confidence: conf,
             },
           ];
+          const maxSeriesPoints = mobileProfileRef.current
+            ? MOBILE_MAX_SERIES_POINTS
+            : MAX_SERIES_POINTS;
           const trimmed =
-            next.length > MAX_SERIES_POINTS
-              ? next.slice(next.length - MAX_SERIES_POINTS)
+            next.length > maxSeriesPoints
+              ? next.slice(next.length - maxSeriesPoints)
               : next;
           timeSeriesRef.current = trimmed;
           return trimmed;
@@ -258,7 +278,14 @@ export function useBeatNetAnalyzer() {
       const rms = Math.sqrt(sum / dataArray.length);
       const scaled = Math.min(1, rms * 2);
       smoothedLevel = SMOOTHING * smoothedLevel + (1 - SMOOTHING) * scaled;
-      setAudioLevel(smoothedLevel);
+      const now = Date.now();
+      const audioLevelUpdateMs = mobileProfileRef.current
+        ? MOBILE_AUDIO_LEVEL_UPDATE_MS
+        : AUDIO_LEVEL_UPDATE_MS;
+      if (now - lastAudioLevelUpdateRef.current >= audioLevelUpdateMs) {
+        lastAudioLevelUpdateRef.current = now;
+        setAudioLevel(smoothedLevel);
+      }
       levelRafRef.current = requestAnimationFrame(pollLevel);
     };
     levelRafRef.current = requestAnimationFrame(pollLevel);
@@ -267,6 +294,7 @@ export function useBeatNetAnalyzer() {
     startTimeRef.current = sTime;
     lastUpdateRef.current = 0;
     lastUiUpdateRef.current = 0;
+    lastAudioLevelUpdateRef.current = 0;
     timeSeriesRef.current = [];
     bpmWindowRef.current = [];
     setIsActive(true);
@@ -284,9 +312,12 @@ export function useBeatNetAnalyzer() {
           ...prev,
           { timestamp: now - sTime, bpm: null, confidence: 0 },
         ];
+        const maxSeriesPoints = mobileProfileRef.current
+          ? MOBILE_MAX_SERIES_POINTS
+          : MAX_SERIES_POINTS;
         const trimmed =
-          next.length > MAX_SERIES_POINTS
-            ? next.slice(next.length - MAX_SERIES_POINTS)
+          next.length > maxSeriesPoints
+            ? next.slice(next.length - maxSeriesPoints)
             : next;
         timeSeriesRef.current = trimmed;
         return trimmed;
