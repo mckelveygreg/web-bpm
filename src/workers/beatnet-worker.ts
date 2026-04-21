@@ -18,6 +18,7 @@
  */
 
 import * as ort from "onnxruntime-web";
+import ortWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url";
 import type {
   FilterbankConfig,
   StateSpacesConfig,
@@ -51,25 +52,38 @@ let tempoPriorBpm: number | null = null;
 
 const BPM_WINDOW_SIZE = 25;
 
+function requireOk(response: Response, assetName: string) {
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load ${assetName} (${response.status} ${response.statusText}) from ${response.url}`,
+    );
+  }
+
+  return response;
+}
+
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
 async function init(baseUrl: string) {
   try {
-    const publicBase = new URL(baseUrl, self.location.origin).href;
-
-    const [fbResp, ssResp] = await Promise.all([
-      fetch(`${publicBase}models/filterbank.json`),
-      fetch(`${publicBase}models/state_spaces.json`),
-    ]);
-
-    const fbConfig = (await fbResp.json()) as FilterbankConfig;
-    ssConfig = (await ssResp.json()) as StateSpacesConfig;
+    const publicBase = new URL(baseUrl, self.location.origin);
+    const modelsBase = new URL("models/", publicBase);
 
     ort.env.wasm.numThreads = 1;
+    ort.env.wasm.wasmPaths = { wasm: ortWasmUrl };
+
+    const [fbResp, ssResp] = await Promise.all([
+      fetch(new URL("filterbank.json", modelsBase)),
+      fetch(new URL("state_spaces.json", modelsBase)),
+    ]);
+
+    const fbConfig = (await requireOk(fbResp, "filterbank config").json()) as FilterbankConfig;
+    ssConfig = (await requireOk(ssResp, "state space config").json()) as StateSpacesConfig;
+
     session = await ort.InferenceSession.create(
-      `${publicBase}models/beatnet.onnx`,
+      new URL("beatnet.onnx", modelsBase).href,
       {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
