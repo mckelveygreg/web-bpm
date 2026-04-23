@@ -1,0 +1,6 @@
+{
+	"appId": "com.mckelveygreg.webbpm",
+	"appName": "web-bpm",
+	"webDir": "dist",
+	"packageClassList": []
+}
