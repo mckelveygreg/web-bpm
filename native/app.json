@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "Web BPM",
+    "owner": "mckelveygreg",
     "slug": "web-bpm",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -30,7 +31,7 @@
     "assets": ["./assets"],
     "extra": {
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
+        "projectId": "70c39e63-88b1-4ef4-9444-33b5e96692d1"
       }
     }
   }
