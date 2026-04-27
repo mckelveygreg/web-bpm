@@ -31,24 +31,21 @@ export default function TunerGauge({
   const inTune = note !== null && Math.abs(cents) <= 5;
 
   // Map cents (-50..+50) to 0..GAUGE_WIDTH
-  const needleX = Math.max(0, Math.min(GAUGE_WIDTH, (0.5 + (note ? cents : 0) / 100) * GAUGE_WIDTH));
+  const needleX = Math.max(
+    0,
+    Math.min(GAUGE_WIDTH, (0.5 + (note ? cents : 0) / 100) * GAUGE_WIDTH),
+  );
 
   return (
     <View style={styles.container}>
       {/* Note name + octave */}
       <View style={styles.noteRow}>
-        <Text style={[styles.noteText, !note && styles.noteTextDisabled]}>
-          {note ?? "—"}
-        </Text>
-        {octave !== null && (
-          <Text style={styles.octaveText}>{octave}</Text>
-        )}
+        <Text style={[styles.noteText, !note && styles.noteTextDisabled]}>{note ?? "—"}</Text>
+        {octave !== null && <Text style={styles.octaveText}>{octave}</Text>}
       </View>
 
       {/* Frequency readout */}
-      <Text style={styles.freqText}>
-        {frequency !== null ? `${frequency} Hz` : "—"}
-      </Text>
+      <Text style={styles.freqText}>{frequency !== null ? `${frequency} Hz` : "—"}</Text>
 
       {/* In-tune indicator */}
       <View style={styles.statusRow}>
@@ -68,11 +65,43 @@ export default function TunerGauge({
       <View style={styles.gaugeContainer}>
         <Svg width={GAUGE_WIDTH} height={GAUGE_HEIGHT + 8}>
           {/* Background zones */}
-          <Rect x={0} y={4} width={GAUGE_WIDTH * 0.35} height={GAUGE_HEIGHT} fill="rgba(244,67,54,0.15)" rx={0} />
-          <Rect x={GAUGE_WIDTH * 0.35} y={4} width={GAUGE_WIDTH * 0.1} height={GAUGE_HEIGHT} fill="rgba(255,152,0,0.2)" />
-          <Rect x={GAUGE_WIDTH * 0.45} y={4} width={GAUGE_WIDTH * 0.1} height={GAUGE_HEIGHT} fill="rgba(76,175,80,0.25)" />
-          <Rect x={GAUGE_WIDTH * 0.55} y={4} width={GAUGE_WIDTH * 0.1} height={GAUGE_HEIGHT} fill="rgba(255,152,0,0.2)" />
-          <Rect x={GAUGE_WIDTH * 0.65} y={4} width={GAUGE_WIDTH * 0.35} height={GAUGE_HEIGHT} fill="rgba(244,67,54,0.15)" rx={0} />
+          <Rect
+            x={0}
+            y={4}
+            width={GAUGE_WIDTH * 0.35}
+            height={GAUGE_HEIGHT}
+            fill="rgba(244,67,54,0.15)"
+            rx={0}
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.35}
+            y={4}
+            width={GAUGE_WIDTH * 0.1}
+            height={GAUGE_HEIGHT}
+            fill="rgba(255,152,0,0.2)"
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.45}
+            y={4}
+            width={GAUGE_WIDTH * 0.1}
+            height={GAUGE_HEIGHT}
+            fill="rgba(76,175,80,0.25)"
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.55}
+            y={4}
+            width={GAUGE_WIDTH * 0.1}
+            height={GAUGE_HEIGHT}
+            fill="rgba(255,152,0,0.2)"
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.65}
+            y={4}
+            width={GAUGE_WIDTH * 0.35}
+            height={GAUGE_HEIGHT}
+            fill="rgba(244,67,54,0.15)"
+            rx={0}
+          />
 
           {/* Center tick */}
           <Line

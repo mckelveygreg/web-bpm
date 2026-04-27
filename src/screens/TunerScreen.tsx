@@ -1,12 +1,5 @@
 import React, { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
-} from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import TunerGauge from "../components/TunerGauge";
 import { usePitchDetector } from "../hooks/usePitchDetector";
@@ -45,10 +38,7 @@ export default function TunerScreen() {
       try {
         await detector.start();
       } catch (err) {
-        Alert.alert(
-          "Error",
-          err instanceof Error ? err.message : "Microphone access is required",
-        );
+        Alert.alert("Error", err instanceof Error ? err.message : "Microphone access is required");
       }
     }
   }, [detector]);
@@ -74,18 +64,12 @@ export default function TunerScreen() {
             {(["♭", "♮", "♯"] as Modifier[]).map((mod) => (
               <TouchableOpacity
                 key={mod}
-                style={[
-                  styles.modButton,
-                  modifier === mod && styles.modButtonSelected,
-                ]}
+                style={[styles.modButton, modifier === mod && styles.modButtonSelected]}
                 onPress={() => setModifier(mod)}
                 activeOpacity={0.7}
               >
                 <Text
-                  style={[
-                    styles.modButtonText,
-                    modifier === mod && styles.modButtonTextSelected,
-                  ]}
+                  style={[styles.modButtonText, modifier === mod && styles.modButtonTextSelected]}
                 >
                   {mod}
                 </Text>
@@ -115,16 +99,11 @@ export default function TunerScreen() {
 
           {/* Start / Stop */}
           <TouchableOpacity
-            style={[
-              styles.button,
-              detector.isActive ? styles.buttonStop : styles.buttonStart,
-            ]}
+            style={[styles.button, detector.isActive ? styles.buttonStop : styles.buttonStart]}
             onPress={handleToggle}
             activeOpacity={0.8}
           >
-            <Text style={styles.buttonText}>
-              {detector.isActive ? "Stop" : "Start Tuner"}
-            </Text>
+            <Text style={styles.buttonText}>{detector.isActive ? "Stop" : "Start Tuner"}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

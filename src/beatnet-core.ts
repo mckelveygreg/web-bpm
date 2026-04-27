@@ -178,10 +178,7 @@ export function computeFeatures(
   const diff = new Float32Array(fbNumBands);
   if (state.prevSpectrum) {
     for (let b = 0; b < fbNumBands; b++) {
-      diff[b] = Math.max(
-        0,
-        filtered[b]! - state.diffRatio * state.prevSpectrum[b]!,
-      );
+      diff[b] = Math.max(0, filtered[b]! - state.diffRatio * state.prevSpectrum[b]!);
     }
   }
   state.prevSpectrum = filtered.slice();
@@ -237,7 +234,10 @@ export function createParticleFilter(
       let bestDist = Infinity;
       for (let j = 0; j < numTempi; j++) {
         const dist = Math.abs(tempi[j]! - sampledBpm);
-        if (dist < bestDist) { bestDist = dist; bestIdx = j; }
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = j;
+        }
       }
       tempoIdx[i] = bestIdx;
       phases[i] = Math.random() * ssConfig.intervals[bestIdx]!;
@@ -350,10 +350,7 @@ export function updateParticleFilter(
   return bpmEstimate;
 }
 
-export function resyncPhases(
-  pf: ParticleFilterState,
-  ssConfig: StateSpacesConfig,
-): void {
+export function resyncPhases(pf: ParticleFilterState, ssConfig: StateSpacesConfig): void {
   for (let i = 0; i < pf.numParticles; i++) {
     const interval = ssConfig.intervals[pf.tempoIdx[i]!]!;
     pf.phases[i] = Math.random() * interval;

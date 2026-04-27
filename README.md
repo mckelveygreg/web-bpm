@@ -74,14 +74,14 @@ Live at: **https://mckelveygreg.github.io/web-bpm/**
 
 ## Browser Compatibility
 
-| Feature | Chrome/Edge | Firefox | Safari (iOS 16.4+) |
-|---|---|---|---|
-| Microphone access | ✅ | ✅ | ✅ |
-| AudioWorklet (BPM) | ✅ | ✅ | ✅ |
-| MediaRecorder | ✅ webm/opus | ✅ webm/opus | ✅ mp4/aac |
-| IndexedDB | ✅ | ✅ | ✅ (50MB cap) |
-| PWA Install | ✅ auto-prompt | ✅ | ⚠️ manual only |
-| Wake Lock | ✅ | ✅ | ✅ (16.4+) |
+| Feature            | Chrome/Edge    | Firefox      | Safari (iOS 16.4+) |
+| ------------------ | -------------- | ------------ | ------------------ |
+| Microphone access  | ✅             | ✅           | ✅                 |
+| AudioWorklet (BPM) | ✅             | ✅           | ✅                 |
+| MediaRecorder      | ✅ webm/opus   | ✅ webm/opus | ✅ mp4/aac         |
+| IndexedDB          | ✅             | ✅           | ✅ (50MB cap)      |
+| PWA Install        | ✅ auto-prompt | ✅           | ⚠️ manual only     |
+| Wake Lock          | ✅             | ✅           | ✅ (16.4+)         |
 
 > **Note:** HTTPS is required for microphone access and service workers. GitHub Pages provides this by default.
 

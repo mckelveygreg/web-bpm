@@ -15,16 +15,11 @@ const POLL_INTERVAL_MS = 60;
 const WAV_HEADER_BYTES = 44;
 const LEVEL_SMOOTHING = 0.8;
 
-const NOTE_NAMES = [
-  "C", "C♯", "D", "D♯", "E", "F",
-  "F♯", "G", "G♯", "A", "A♯", "B",
-] as const;
+const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"] as const;
 
 const A4 = 440;
 
-function frequencyToNote(
-  freq: number,
-): { note: string; octave: number; cents: number } {
+function frequencyToNote(freq: number): { note: string; octave: number; cents: number } {
   const semitones = 12 * Math.log2(freq / A4);
   const rounded = Math.round(semitones);
   const cents = Math.round((semitones - rounded) * 100);
@@ -60,9 +55,7 @@ function wavBytesToFloat32Mono(bytes: Uint8Array): Float32Array {
       let sum = 0;
       for (let ch = 0; ch < numChannels; ch++) {
         const offset = dataOffset + (i * numChannels + ch) * bytesPerSample;
-        const sample = bytesPerSample === 2
-          ? view.getInt16(offset, true)
-          : view.getInt8(offset);
+        const sample = bytesPerSample === 2 ? view.getInt16(offset, true) : view.getInt8(offset);
         sum += sample / maxVal;
       }
       result[i] = sum / numChannels;

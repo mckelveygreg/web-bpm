@@ -22,10 +22,7 @@ export default function LiveScreen() {
     try {
       await analyzer.start();
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "Microphone access is required",
-      );
+      Alert.alert("Error", err instanceof Error ? err.message : "Microphone access is required");
     }
   }, [analyzer]);
 
@@ -59,10 +56,7 @@ export default function LiveScreen() {
         />
 
         <View style={styles.chartContainer}>
-          <RealtimeChart
-            data={analyzer.timeSeries}
-            targetBpm={targetBpm}
-          />
+          <RealtimeChart data={analyzer.timeSeries} targetBpm={targetBpm} />
         </View>
 
         <View style={styles.controls}>

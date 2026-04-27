@@ -20,12 +20,7 @@ function getStabilityLabel(isStable: boolean, confidence: number): string {
   return "Listening";
 }
 
-export default function BpmDisplay({
-  bpm,
-  isStable,
-  confidence,
-  audioLevel,
-}: BpmDisplayProps) {
+export default function BpmDisplay({ bpm, isStable, confidence, audioLevel }: BpmDisplayProps) {
   const color = getStabilityColor(isStable, confidence);
   const label = getStabilityLabel(isStable, confidence);
 
@@ -60,11 +55,7 @@ export default function BpmDisplay({
                 {
                   width: `${audioLevel * 100}%`,
                   backgroundColor:
-                    audioLevel > 0.7
-                      ? "#4caf50"
-                      : audioLevel > 0.3
-                        ? "#ff9800"
-                        : "#f44336",
+                    audioLevel > 0.7 ? "#4caf50" : audioLevel > 0.3 ? "#ff9800" : "#f44336",
                 },
               ]}
             />

@@ -53,9 +53,7 @@ export default function App() {
               component={LiveScreen}
               options={{
                 title: "BPM",
-                tabBarIcon: ({ color }) => (
-                  <Text style={{ color, fontSize: 20 }}>♩</Text>
-                ),
+                tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>♩</Text>,
               }}
             />
             <Tab.Screen
@@ -63,9 +61,7 @@ export default function App() {
               component={TunerScreen}
               options={{
                 title: "Tuner",
-                tabBarIcon: ({ color }) => (
-                  <Text style={{ color, fontSize: 20 }}>♪</Text>
-                ),
+                tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>♪</Text>,
               }}
             />
           </Tab.Navigator>

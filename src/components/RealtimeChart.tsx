@@ -58,9 +58,7 @@ export default function RealtimeChart({
       };
     }
 
-    const validBpm = visible
-      .map((d) => d.bpm)
-      .filter((v): v is number => v !== null);
+    const validBpm = visible.map((d) => d.bpm).filter((v): v is number => v !== null);
     if (targetBpm) validBpm.push(targetBpm);
 
     const rawMin = validBpm.length > 0 ? Math.min(...validBpm) : (targetBpm ?? 100);
@@ -72,10 +70,8 @@ export default function RealtimeChart({
 
     const xRange = visible[visible.length - 1]!.timestamp - visible[0]!.timestamp || 1;
 
-    const toX = (ts: number) =>
-      PADDING.left + ((ts - visible[0]!.timestamp) / xRange) * innerW;
-    const toY = (bpm: number) =>
-      PADDING.top + (1 - (bpm - yMinVal) / yRange) * innerH;
+    const toX = (ts: number) => PADDING.left + ((ts - visible[0]!.timestamp) / xRange) * innerW;
+    const toY = (bpm: number) => PADDING.top + (1 - (bpm - yMinVal) / yRange) * innerH;
 
     // Build polyline points (skip null bpm)
     const ptParts: string[] = [];
@@ -93,11 +89,7 @@ export default function RealtimeChart({
     const xLbls = [`${startSec}s`, `${endSec}s`];
 
     // Y axis labels
-    const yLbls = [
-      String(yMaxVal),
-      String(Math.round((yMinVal + yMaxVal) / 2)),
-      String(yMinVal),
-    ];
+    const yLbls = [String(yMaxVal), String(Math.round((yMinVal + yMaxVal) / 2)), String(yMinVal)];
 
     return {
       points: ptParts.join(" "),
@@ -188,7 +180,12 @@ export default function RealtimeChart({
 
       {/* X-axis labels */}
       {xLabels.length >= 2 && (
-        <View style={[styles.xLabels, { width: chartWidth - PADDING.left - PADDING.right, marginLeft: PADDING.left }]}>
+        <View
+          style={[
+            styles.xLabels,
+            { width: chartWidth - PADDING.left - PADDING.right, marginLeft: PADDING.left },
+          ]}
+        >
           <Text style={styles.axisLabel}>{xLabels[0]}</Text>
           <Text style={styles.axisLabel}>{xLabels[1]}</Text>
         </View>

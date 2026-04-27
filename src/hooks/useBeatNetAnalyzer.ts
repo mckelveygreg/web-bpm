@@ -106,9 +106,7 @@ function wavBytesToFloat32(bytes: Uint8Array): Float32Array {
       let sum = 0;
       for (let ch = 0; ch < numChannels; ch++) {
         const offset = dataOffset + (i * numChannels + ch) * bytesPerSample;
-        const sample = bytesPerSample === 2
-          ? view.getInt16(offset, true)
-          : view.getInt8(offset);
+        const sample = bytesPerSample === 2 ? view.getInt16(offset, true) : view.getInt8(offset);
         sum += sample / maxVal;
       }
       result[i] = sum / numChannels;
@@ -183,135 +181,138 @@ export function useBeatNetAnalyzer() {
   // ONNX inference
   // ---------------------------------------------------------------------------
 
-  const runInference = useCallback(async (
-    features: Float32Array,
-  ): Promise<{ beatProb: number; downbeatProb: number }> => {
-    const session = sessionRef.current;
-    if (!session || !hStateRef.current || !cStateRef.current) {
-      throw new Error("Session not initialized");
-    }
+  const runInference = useCallback(
+    async (features: Float32Array): Promise<{ beatProb: number; downbeatProb: number }> => {
+      const session = sessionRef.current;
+      if (!session || !hStateRef.current || !cStateRef.current) {
+        throw new Error("Session not initialized");
+      }
 
-    const inputTensor = new Tensor("float32", features, [1, 1, 272]);
+      const inputTensor = new Tensor("float32", features, [1, 1, 272]);
 
-    const results = await session.run({
-      input: inputTensor,
-      h_in: hStateRef.current,
-      c_in: cStateRef.current,
-    });
+      const results = await session.run({
+        input: inputTensor,
+        h_in: hStateRef.current,
+        c_in: cStateRef.current,
+      });
 
-    const hOut = results["h_out"] as Tensor;
-    const cOut = results["c_out"] as Tensor;
-    const outputTensor = results["output"] as Tensor;
+      const hOut = results["h_out"] as Tensor;
+      const cOut = results["c_out"] as Tensor;
+      const outputTensor = results["output"] as Tensor;
 
-    const logits = Array.from(outputTensor.data as Float32Array);
+      const logits = Array.from(outputTensor.data as Float32Array);
 
-    // Update LSTM state for the next inference step
-    hStateRef.current = hOut;
-    cStateRef.current = cOut;
+      // Update LSTM state for the next inference step
+      hStateRef.current = hOut;
+      cStateRef.current = cOut;
 
-    const maxVal = Math.max(logits[0]!, logits[1]!, logits[2]!);
-    const exp0 = Math.exp(logits[0]! - maxVal);
-    const exp1 = Math.exp(logits[1]! - maxVal);
-    const exp2 = Math.exp(logits[2]! - maxVal);
-    const sumExp = exp0 + exp1 + exp2;
+      const maxVal = Math.max(logits[0]!, logits[1]!, logits[2]!);
+      const exp0 = Math.exp(logits[0]! - maxVal);
+      const exp1 = Math.exp(logits[1]! - maxVal);
+      const exp2 = Math.exp(logits[2]! - maxVal);
+      const sumExp = exp0 + exp1 + exp2;
 
-    return {
-      beatProb: exp0 / sumExp,
-      downbeatProb: exp1 / sumExp,
-    };
-  }, []);
+      return {
+        beatProb: exp0 / sumExp,
+        downbeatProb: exp1 / sumExp,
+      };
+    },
+    [],
+  );
 
   // ---------------------------------------------------------------------------
   // Process a single 441-sample hop
   // ---------------------------------------------------------------------------
 
-  const processHop = useCallback(async (samples: Float32Array) => {
-    if (!specStateRef.current || !pfRef.current || !ssConfigRef.current) return;
+  const processHop = useCallback(
+    async (samples: Float32Array) => {
+      if (!specStateRef.current || !pfRef.current || !ssConfigRef.current) return;
 
-    const features = computeFeatures(specStateRef.current, samples);
-    if (!features) return;
+      const features = computeFeatures(specStateRef.current, samples);
+      if (!features) return;
 
-    frameCountRef.current++;
-    if (frameCountRef.current < 5) return;
+      frameCountRef.current++;
+      if (frameCountRef.current < 5) return;
 
-    try {
-      const { beatProb, downbeatProb } = await runInference(features);
-      const activation = Math.max(beatProb, downbeatProb);
-      const rawBpm = updateParticleFilter(pfRef.current, ssConfigRef.current, activation);
+      try {
+        const { beatProb, downbeatProb } = await runInference(features);
+        const activation = Math.max(beatProb, downbeatProb);
+        const rawBpm = updateParticleFilter(pfRef.current, ssConfigRef.current, activation);
 
-      if (rawBpm <= 0) return;
+        if (rawBpm <= 0) return;
 
-      pfRef.current.bpmWindow.push(rawBpm);
-      if (pfRef.current.bpmWindow.length > BPM_WINDOW_SIZE) {
-        pfRef.current.bpmWindow.shift();
-      }
-
-      const sorted = [...pfRef.current.bpmWindow].sort((a, b) => a - b);
-      const bpm = sorted[Math.floor(sorted.length / 2)]!;
-      const isBeat = beatProb > 0.3 || downbeatProb > 0.3;
-
-      let variance = 0;
-      for (let i = 0; i < pfRef.current.numParticles; i++) {
-        const diff = (ssConfigRef.current.tempi[pfRef.current.tempoIdx[i]!] ?? 0) - rawBpm;
-        variance += pfRef.current.particles[i]! * diff * diff;
-      }
-      const cv = Math.sqrt(variance) / rawBpm;
-      const conf = Math.max(0, Math.min(1, 1 - cv * 8));
-
-      const now = Date.now();
-      if (now - lastUiUpdateRef.current < 100) return;
-      lastUiUpdateRef.current = now;
-
-      // Octave correction
-      let displayBpm = bpm;
-      const prior = tempoPriorRef.current;
-      if (prior !== null) {
-        const ratio = displayBpm / prior;
-        if (ratio > HALF_TEMPO_RATIO_LO && ratio < HALF_TEMPO_RATIO_HI) displayBpm *= 2;
-        else if (ratio > DOUBLE_TEMPO_RATIO_LO && ratio < DOUBLE_TEMPO_RATIO_HI) displayBpm /= 2;
-      }
-
-      const win = bpmWindowRef.current;
-      if (win.length >= 3) {
-        const s = [...win].sort((a, b) => a - b);
-        const median = s[Math.floor(s.length / 2)]!;
-        if (Math.abs(displayBpm - median) / median > 0.1) {
-          win.length = 0;
+        pfRef.current.bpmWindow.push(rawBpm);
+        if (pfRef.current.bpmWindow.length > BPM_WINDOW_SIZE) {
+          pfRef.current.bpmWindow.shift();
         }
+
+        const sorted = [...pfRef.current.bpmWindow].sort((a, b) => a - b);
+        const bpm = sorted[Math.floor(sorted.length / 2)]!;
+        const isBeat = beatProb > 0.3 || downbeatProb > 0.3;
+
+        let variance = 0;
+        for (let i = 0; i < pfRef.current.numParticles; i++) {
+          const diff = (ssConfigRef.current.tempi[pfRef.current.tempoIdx[i]!] ?? 0) - rawBpm;
+          variance += pfRef.current.particles[i]! * diff * diff;
+        }
+        const cv = Math.sqrt(variance) / rawBpm;
+        const conf = Math.max(0, Math.min(1, 1 - cv * 8));
+
+        const now = Date.now();
+        if (now - lastUiUpdateRef.current < 100) return;
+        lastUiUpdateRef.current = now;
+
+        // Octave correction
+        let displayBpm = bpm;
+        const prior = tempoPriorRef.current;
+        if (prior !== null) {
+          const ratio = displayBpm / prior;
+          if (ratio > HALF_TEMPO_RATIO_LO && ratio < HALF_TEMPO_RATIO_HI) displayBpm *= 2;
+          else if (ratio > DOUBLE_TEMPO_RATIO_LO && ratio < DOUBLE_TEMPO_RATIO_HI) displayBpm /= 2;
+        }
+
+        const win = bpmWindowRef.current;
+        if (win.length >= 3) {
+          const s = [...win].sort((a, b) => a - b);
+          const median = s[Math.floor(s.length / 2)]!;
+          if (Math.abs(displayBpm - median) / median > 0.1) {
+            win.length = 0;
+          }
+        }
+        win.push(displayBpm);
+        if (win.length > 25) win.shift();
+
+        const finalSorted = [...win].sort((a, b) => a - b);
+        const finalBpm = finalSorted[Math.floor(finalSorted.length / 2)]!;
+
+        lastUpdateRef.current = now;
+
+        setCurrentBpm(Math.round(finalBpm * 100) / 100);
+        setConfidence(conf);
+        setIsStable(conf > 0.5);
+
+        if (isBeat) {
+          setTimeSeries((prev) => {
+            const next = [
+              ...prev,
+              {
+                timestamp: now - startTimeRef.current,
+                bpm: Math.round(finalBpm * 100) / 100,
+                confidence: conf,
+              },
+            ];
+            const trimmed =
+              next.length > MAX_SERIES_POINTS ? next.slice(next.length - MAX_SERIES_POINTS) : next;
+            timeSeriesRef.current = trimmed;
+            return trimmed;
+          });
+        }
+      } catch (err) {
+        console.error("[BeatNet] inference error:", err);
       }
-      win.push(displayBpm);
-      if (win.length > 25) win.shift();
-
-      const finalSorted = [...win].sort((a, b) => a - b);
-      const finalBpm = finalSorted[Math.floor(finalSorted.length / 2)]!;
-
-      lastUpdateRef.current = now;
-
-      setCurrentBpm(Math.round(finalBpm * 100) / 100);
-      setConfidence(conf);
-      setIsStable(conf > 0.5);
-
-      if (isBeat) {
-        setTimeSeries((prev) => {
-          const next = [
-            ...prev,
-            {
-              timestamp: now - startTimeRef.current,
-              bpm: Math.round(finalBpm * 100) / 100,
-              confidence: conf,
-            },
-          ];
-          const trimmed = next.length > MAX_SERIES_POINTS
-            ? next.slice(next.length - MAX_SERIES_POINTS)
-            : next;
-          timeSeriesRef.current = trimmed;
-          return trimmed;
-        });
-      }
-    } catch (err) {
-      console.error("[BeatNet] inference error:", err);
-    }
-  }, [runInference]);
+    },
+    [runInference],
+  );
 
   // ---------------------------------------------------------------------------
   // Poll the WAV file and extract new PCM samples
@@ -517,13 +518,9 @@ export function useBeatNetAnalyzer() {
       const now = Date.now();
       if (now - lastUpdateRef.current < 1500) return;
       setTimeSeries((prev) => {
-        const next = [
-          ...prev,
-          { timestamp: now - startTimeRef.current, bpm: null, confidence: 0 },
-        ];
-        const trimmed = next.length > MAX_SERIES_POINTS
-          ? next.slice(next.length - MAX_SERIES_POINTS)
-          : next;
+        const next = [...prev, { timestamp: now - startTimeRef.current, bpm: null, confidence: 0 }];
+        const trimmed =
+          next.length > MAX_SERIES_POINTS ? next.slice(next.length - MAX_SERIES_POINTS) : next;
         timeSeriesRef.current = trimmed;
         return trimmed;
       });
