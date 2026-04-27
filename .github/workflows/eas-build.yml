@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v4.3.0
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: yarn
           cache-dependency-path: yarn.lock
 
@@ -35,7 +35,9 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Enable Corepack
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack prepare yarn@4.14.1 --activate
 
       - name: Install dependencies
         run: yarn install --immutable
