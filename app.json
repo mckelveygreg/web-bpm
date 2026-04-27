@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Web BPM",
+    "slug": "web-bpm",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "webbpm",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mckelveygreg.webbpm",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Web BPM uses the microphone to detect tempo and pitch in real time."
+      }
+    },
+    "android": {
+      "package": "com.mckelveygreg.webbpm",
+      "permissions": ["android.permission.RECORD_AUDIO"]
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Web BPM uses the microphone to detect tempo and pitch in real time."
+        }
+      ]
+    ],
+    "assets": ["./assets"],
+    "extra": {
+      "eas": {
+        "projectId": "70c39e63-88b1-4ef4-9444-33b5e96692d1"
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 /**
  * Pure computational functions for the BeatNet pipeline.
- * Extracted from beatnet-worker.ts for testability.
+ * Ported from src/workers/beatnet-core.ts for React Native.
+ * Uses fft.js instead of onnxruntime-web.
  */
 import FFT from "fft.js";
 
@@ -177,10 +178,7 @@ export function computeFeatures(
   const diff = new Float32Array(fbNumBands);
   if (state.prevSpectrum) {
     for (let b = 0; b < fbNumBands; b++) {
-      diff[b] = Math.max(
-        0,
-        filtered[b]! - state.diffRatio * state.prevSpectrum[b]!,
-      );
+      diff[b] = Math.max(0, filtered[b]! - state.diffRatio * state.prevSpectrum[b]!);
     }
   }
   state.prevSpectrum = filtered.slice();
@@ -196,6 +194,11 @@ export function computeFeatures(
 // ---------------------------------------------------------------------------
 // Particle Filter
 // ---------------------------------------------------------------------------
+
+// Gaussian variance for beat-phase likelihood in the particle filter.
+// σ²=0.03 — slightly wider than original 0.02 for real music timing
+// but not so wide that sub-harmonic particles get false credit.
+const BEAT_PHASE_VARIANCE = 0.03;
 
 export interface ParticleFilterState {
   particles: Float32Array;
@@ -220,28 +223,27 @@ export function createParticleFilter(
   const tempi = ssConfig.tempi;
 
   if (tempoPriorBpm !== null) {
-    // Biased initialization: sample from a Gaussian centered on the target
-    // (σ = 10% of target BPM in tempo-index space)
     const targetSigma = tempoPriorBpm * 0.1;
     for (let i = 0; i < numParticles; i++) {
-      // Box-Muller for normal distribution
+      // Box-Muller transform to sample from N(tempoPriorBpm, targetSigma)
       const u1 = Math.random();
       const u2 = Math.random();
       const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       const sampledBpm = tempoPriorBpm + z * targetSigma;
-      // Find nearest tempo index
       let bestIdx = 0;
       let bestDist = Infinity;
       for (let j = 0; j < numTempi; j++) {
         const dist = Math.abs(tempi[j]! - sampledBpm);
-        if (dist < bestDist) { bestDist = dist; bestIdx = j; }
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = j;
+        }
       }
       tempoIdx[i] = bestIdx;
       phases[i] = Math.random() * ssConfig.intervals[bestIdx]!;
       particles[i] = 1 / numParticles;
     }
   } else {
-    // Uniform initialization
     for (let i = 0; i < numParticles; i++) {
       const idx = Math.floor(Math.random() * numTempi);
       tempoIdx[i] = idx;
@@ -268,8 +270,6 @@ export function updateParticleFilter(
     const interval = intervals[pf.tempoIdx[i]!]!;
     pf.phases[i] = (pf.phases[i]! + 1) % interval;
 
-    // Tempo drift: 5% chance of ±1 index, 1% chance of ±2 index
-    // (faster adaptation to tempo changes)
     const r = Math.random();
     if (r < 0.01) {
       const jump = Math.random() < 0.5 ? -2 : 2;
@@ -280,18 +280,13 @@ export function updateParticleFilter(
     }
   }
 
-  // 2. Multiplicative weight update (standard SIR particle filter):
-  //    Multiply existing weights by observation likelihood so evidence
-  //    compounds across frames. Resample when weights degenerate.
+  // 2. Multiplicative weight update
   let totalWeight = 0;
   for (let i = 0; i < numParticles; i++) {
     const interval = intervals[pf.tempoIdx[i]!]!;
     const normalizedPhase = pf.phases[i]! / interval;
     const beatDist = Math.min(normalizedPhase, 1 - normalizedPhase);
-    // σ²=0.03 — slightly wider than original 0.02 for real music timing
-    // but not so wide that sub-harmonic particles get false credit
-    const beatLikelihood = Math.exp(-(beatDist * beatDist) / (2 * 0.03));
-    // Bayesian observation: P(obs | state)
+    const beatLikelihood = Math.exp(-(beatDist * beatDist) / (2 * BEAT_PHASE_VARIANCE));
     const likelihood = beatProb * beatLikelihood + (1 - beatProb) * (1 - beatLikelihood);
     pf.particles[i] = pf.particles[i]! * likelihood;
     totalWeight += pf.particles[i]!;
@@ -306,19 +301,16 @@ export function updateParticleFilter(
   // 3. Resample
   const effectiveN = 1 / pf.particles.reduce((sum, w) => sum + w * w, 0);
   if (effectiveN < numParticles / 2) {
-    systematicResample(pf, ssConfig);
+    systematicResample(pf);
   }
 
-  // 4. Estimate — use histogram mode (MAP) with octave disambiguation.
-  //    Weighted mean is pulled by minority particles at harmonics/
-  //    sub-harmonics, while MAP picks the most popular tempo region.
+  // 4. Estimate via histogram mode with octave disambiguation
   const tempoWeights = new Float64Array(numTempi);
   for (let i = 0; i < numParticles; i++) {
     const idx = pf.tempoIdx[i]!;
     tempoWeights[idx] = tempoWeights[idx]! + pf.particles[i]!;
   }
 
-  // Find peak bin
   let bestIdx = 0;
   let bestWeight = 0;
   for (let t = 0; t < numTempi; t++) {
@@ -328,7 +320,6 @@ export function updateParticleFilter(
     }
   }
 
-  // Smooth the MAP estimate using nearby bins (±3) to avoid quantization
   let smoothNum = 0;
   let smoothDen = 0;
   for (let t = Math.max(0, bestIdx - 3); t <= Math.min(numTempi - 1, bestIdx + 3); t++) {
@@ -337,29 +328,20 @@ export function updateParticleFilter(
   }
   let bpmEstimate = smoothDen > 0 ? smoothNum / smoothDen : tempi[bestIdx]!;
 
-  // Octave correction: if the MAP peak is at a sub-harmonic (half-tempo)
-  // and there's meaningful weight at the double, prefer the double.
-  // This fixes the common case where the filter locks onto half-tempo
-  // because every beat of the true tempo also reinforces half-tempo particles.
   const doubleTarget = bpmEstimate * 2;
   if (doubleTarget <= tempi[numTempi - 1]!) {
-    // Sum weight in a window around the double-tempo
     let doubleWeight = 0;
     for (let t = 0; t < numTempi; t++) {
       if (Math.abs(tempi[t]! - doubleTarget) < doubleTarget * 0.08) {
         doubleWeight += tempoWeights[t]!;
       }
     }
-    // Sum weight around the current estimate
     let currentWeight = 0;
     for (let t = 0; t < numTempi; t++) {
       if (Math.abs(tempi[t]! - bpmEstimate) < bpmEstimate * 0.08) {
         currentWeight += tempoWeights[t]!;
       }
     }
-    // If the double-tempo cluster has at least 20% of the current cluster's
-    // weight, prefer it — the double is likely the true metrical level since
-    // sub-harmonics always get "free" evidence from the true tempo's beats
     if (doubleWeight > currentWeight * 0.2) {
       bpmEstimate = doubleTarget;
     }
@@ -368,29 +350,14 @@ export function updateParticleFilter(
   return bpmEstimate;
 }
 
-/**
- * Randomize particle phases while preserving tempo weights.
- *
- * Call this after audio frames have been dropped (temporal discontinuity)
- * so beat-phase tracking can re-sync without discarding tempo knowledge.
- * The filter's tempo estimate (which particles survived, their weights)
- * is kept intact — only the per-particle beat-phase is re-randomized.
- */
-export function resyncPhases(
-  pf: ParticleFilterState,
-  ssConfig: StateSpacesConfig,
-): void {
+export function resyncPhases(pf: ParticleFilterState, ssConfig: StateSpacesConfig): void {
   for (let i = 0; i < pf.numParticles; i++) {
     const interval = ssConfig.intervals[pf.tempoIdx[i]!]!;
     pf.phases[i] = Math.random() * interval;
   }
-  // pf.particles (weights) are intentionally left unchanged.
 }
 
-function systematicResample(
-  pf: ParticleFilterState,
-  _ssConfig: StateSpacesConfig,
-): void {
+function systematicResample(pf: ParticleFilterState): void {
   const { numParticles } = pf;
   const cumWeights = new Float32Array(numParticles);
   cumWeights[0] = pf.particles[0]!;
@@ -415,48 +382,4 @@ function systematicResample(
   pf.tempoIdx = newTempoIdx;
   pf.phases = newPhases;
   pf.particles.fill(1 / numParticles);
-}
-
-// ---------------------------------------------------------------------------
-// Audio generation helpers (for tests)
-// ---------------------------------------------------------------------------
-
-/**
- * Generate a click track at a given BPM and sample rate.
- * Each click is a short sine burst.
- */
-export function generateClickTrack(
-  bpm: number,
-  durationSec: number,
-  sampleRate = 22050,
-): Float32Array {
-  const totalSamples = Math.floor(durationSec * sampleRate);
-  const audio = new Float32Array(totalSamples);
-  const samplesPerBeat = Math.round((60 / bpm) * sampleRate);
-  const clickDuration = Math.min(Math.floor(sampleRate * 0.01), samplesPerBeat); // 10ms click
-  const freq = 1000; // 1kHz click
-
-  for (let beat = 0; beat * samplesPerBeat < totalSamples; beat++) {
-    const start = beat * samplesPerBeat;
-    for (let i = 0; i < clickDuration && start + i < totalSamples; i++) {
-      const envelope = 1 - i / clickDuration; // linear decay
-      audio[start + i] = envelope * Math.sin((2 * Math.PI * freq * i) / sampleRate);
-    }
-  }
-
-  return audio;
-}
-
-/**
- * Split audio into hop-sized frames.
- */
-export function splitIntoHops(
-  audio: Float32Array,
-  hopSize: number,
-): Float32Array[] {
-  const hops: Float32Array[] = [];
-  for (let i = 0; i + hopSize <= audio.length; i += hopSize) {
-    hops.push(audio.slice(i, i + hopSize));
-  }
-  return hops;
 }

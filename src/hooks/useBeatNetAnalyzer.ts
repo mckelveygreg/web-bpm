@@ -1,18 +1,123 @@
+/**
+ * useBeatNetAnalyzer – React Native hook for real-time BPM detection.
+ *
+ * Uses expo-av Audio.Recording with Linear PCM encoding to capture
+ * microphone audio, runs it through the BeatNet CRNN pipeline via
+ * onnxruntime-react-native, and applies a particle-filter cascade for
+ * beat tracking.
+ *
+ * Architecture:
+ *   expo-av recording (LINEAR_PCM, 22050 Hz)
+ *     → polling timer reads accumulated PCM from the WAV file
+ *     → 441-sample hops fed into computeFeatures()
+ *     → ONNX inference (BDA CRNN model)
+ *     → particle filter → BPM estimate
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BpmDataPoint } from "../types";
-import beatnetWorkerUrl from "../workers/beatnet-worker.ts?worker&url";
+import { Audio } from "expo-av";
+import { Asset } from "expo-asset";
+import * as FileSystem from "expo-file-system";
+import { InferenceSession, Tensor } from "onnxruntime-react-native";
+import type {
+  FilterbankConfig,
+  StateSpacesConfig,
+  SpectrogramState,
+  ParticleFilterState,
+} from "../beatnet-core";
+import {
+  createSpectrogramState,
+  resetSpectrogramState,
+  computeFeatures,
+  createParticleFilter,
+  updateParticleFilter,
+  resyncPhases,
+} from "../beatnet-core";
+
+// Model assets bundled into the app
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const MODEL_ASSET = require("../../assets/models/beatnet.onnx") as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const FILTERBANK_ASSET = require("../../assets/models/filterbank.json") as FilterbankConfig;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const STATE_SPACES_ASSET = require("../../assets/models/state_spaces.json") as StateSpacesConfig;
+
+export interface BpmDataPoint {
+  timestamp: number;
+  bpm: number | null;
+  confidence: number;
+}
 
 const SAMPLE_RATE = 22050;
-const UI_UPDATE_MS = 200;
-const MOBILE_UI_UPDATE_MS = 400;
-const MAX_SERIES_POINTS = 1800;
-const MOBILE_MAX_SERIES_POINTS = 900;
-const AUDIO_LEVEL_UPDATE_MS = 100;
-const MOBILE_AUDIO_LEVEL_UPDATE_MS = 250;
+const HOP_SIZE = 441; // ~20ms at 22050 Hz
+const POLL_INTERVAL_MS = 100; // poll every 100ms → ~4-5 hops per poll
+const BPM_WINDOW_SIZE = 25;
+const PARTICLE_COUNT = 600; // lower than web for mobile perf
+const MAX_SERIES_POINTS = 900;
+const WAV_HEADER_BYTES = 44;
+// Temporal discontinuity thresholds for the hop queue
+const MAX_HOPS_BEFORE_RESYNC = 20;
+const HOPS_TO_RETAIN_AFTER_RESYNC = 3;
+// Octave correction: if BPM is within these ratio bands of the prior, correct it
+const HALF_TEMPO_RATIO_LO = 0.42;
+const HALF_TEMPO_RATIO_HI = 0.58;
+const DOUBLE_TEMPO_RATIO_LO = 1.7;
+const DOUBLE_TEMPO_RATIO_HI = 2.3;
 
-function isMobileRuntime() {
-  return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+// ---------------------------------------------------------------------------
+// WAV / PCM helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a WAV file and return its PCM samples as Float32Array.
+ * Supports 16-bit and 32-bit float PCM.
+ */
+function wavBytesToFloat32(bytes: Uint8Array): Float32Array {
+  // Parse WAV header to determine format
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // Bytes 20-21: audio format (1=PCM, 3=IEEE_FLOAT)
+  const audioFormat = view.getUint16(20, true);
+  // Bytes 22-23: num channels
+  const numChannels = view.getUint16(22, true);
+  // Bytes 34-35: bits per sample
+  const bitsPerSample = view.getUint16(34, true);
+
+  const dataOffset = WAV_HEADER_BYTES;
+  const numBytes = bytes.byteLength - dataOffset;
+
+  if (audioFormat === 3 && bitsPerSample === 32) {
+    // IEEE float 32
+    const numSamples = Math.floor(numBytes / (4 * numChannels));
+    const result = new Float32Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numChannels; ch++) {
+        sum += view.getFloat32(dataOffset + (i * numChannels + ch) * 4, true);
+      }
+      result[i] = sum / numChannels;
+    }
+    return result;
+  } else {
+    // 16-bit PCM (default for expo-av on iOS)
+    const bytesPerSample = bitsPerSample / 8;
+    const numSamples = Math.floor(numBytes / (bytesPerSample * numChannels));
+    const result = new Float32Array(numSamples);
+    const maxVal = Math.pow(2, bitsPerSample - 1);
+    for (let i = 0; i < numSamples; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numChannels; ch++) {
+        const offset = dataOffset + (i * numChannels + ch) * bytesPerSample;
+        const sample = bytesPerSample === 2 ? view.getInt16(offset, true) : view.getInt8(offset);
+        sum += sample / maxVal;
+      }
+      result[i] = sum / numChannels;
+    }
+    return result;
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 export function useBeatNetAnalyzer() {
   const [currentBpm, setCurrentBpm] = useState<number | null>(null);
@@ -24,324 +129,446 @@ export function useBeatNetAnalyzer() {
   const [modelReady, setModelReady] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const workerRef = useRef<Worker | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const analyserNodeRef = useRef<AnalyserNode | null>(null);
-  const levelRafRef = useRef(0);
-  const timeSeriesRef = useRef<BpmDataPoint[]>([]);
+  const sessionRef = useRef<InferenceSession | null>(null);
+  const ssConfigRef = useRef<StateSpacesConfig | null>(null);
+  const specStateRef = useRef<SpectrogramState | null>(null);
+  const pfRef = useRef<ParticleFilterState | null>(null);
+
+  // LSTM state tensors
+  const hStateRef = useRef<Tensor | null>(null);
+  const cStateRef = useRef<Tensor | null>(null);
+
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fillTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const startTimeRef = useRef(0);
   const lastUpdateRef = useRef(0);
   const lastUiUpdateRef = useRef(0);
-  const lastAudioLevelUpdateRef = useRef(0);
-  const fillTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const frameCountRef = useRef(0);
+  const processedBytesRef = useRef(0);
   const bpmWindowRef = useRef<number[]>([]);
   const tempoPriorRef = useRef<number | null>(null);
-  const mobileProfileRef = useRef(isMobileRuntime());
+  const timeSeriesRef = useRef<BpmDataPoint[]>([]);
+  const isActiveRef = useRef(false);
 
-  const setTempoPrior = useCallback((bpm: number | null) => {
-    tempoPriorRef.current = bpm;
-    workerRef.current?.postMessage({ type: "setTempoPrior", bpm });
+  // ---------------------------------------------------------------------------
+  // LSTM helpers
+  // ---------------------------------------------------------------------------
+
+  const resetLSTM = useCallback(() => {
+    const stateData = new Float32Array(2 * 1 * 150);
+    hStateRef.current = new Tensor("float32", stateData.slice(), [2, 1, 150]);
+    cStateRef.current = new Tensor("float32", stateData.slice(), [2, 1, 150]);
   }, []);
 
-  const disconnect = useCallback(async () => {
-    const ctx = audioContextRef.current;
-    if (ctx?.state === "running") {
-      await ctx.suspend();
+  const resetAll = useCallback(() => {
+    resetLSTM();
+    frameCountRef.current = 0;
+    lastUpdateRef.current = 0;
+    if (specStateRef.current) resetSpectrogramState(specStateRef.current);
+    if (ssConfigRef.current) {
+      pfRef.current = createParticleFilter(
+        ssConfigRef.current,
+        PARTICLE_COUNT,
+        BPM_WINDOW_SIZE,
+        tempoPriorRef.current,
+      );
     }
+  }, [resetLSTM]);
 
-    workletNodeRef.current?.disconnect();
-    workletNodeRef.current = null;
-    sourceRef.current?.disconnect();
-    sourceRef.current = null;
-    analyserNodeRef.current?.disconnect();
-    analyserNodeRef.current = null;
+  // ---------------------------------------------------------------------------
+  // ONNX inference
+  // ---------------------------------------------------------------------------
 
-    if (levelRafRef.current) {
-      cancelAnimationFrame(levelRafRef.current);
-      levelRafRef.current = 0;
-    }
-
-    if (fillTimerRef.current) {
-      clearInterval(fillTimerRef.current);
-      fillTimerRef.current = null;
-    }
-
-    if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) {
-        track.stop();
+  const runInference = useCallback(
+    async (features: Float32Array): Promise<{ beatProb: number; downbeatProb: number }> => {
+      const session = sessionRef.current;
+      if (!session || !hStateRef.current || !cStateRef.current) {
+        throw new Error("Session not initialized");
       }
-      streamRef.current = null;
-    }
 
-    workerRef.current?.postMessage({ type: "reset" });
+      const inputTensor = new Tensor("float32", features, [1, 1, 272]);
 
-    await audioContextRef.current?.close();
-    audioContextRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      void disconnect();
-      workerRef.current?.terminate();
-      workerRef.current = null;
-    };
-  }, [disconnect]);
-
-  // Suspend/resume when app is backgrounded
-  useEffect(() => {
-    const handler = () => {
-      const ctx = audioContextRef.current;
-      if (!ctx || !isActive) return;
-      if (document.hidden) {
-        void ctx.suspend();
-      } else {
-        void ctx.resume();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
-  }, [isActive]);
-
-  const initModel = useCallback(async () => {
-    if (workerRef.current || modelLoading) return;
-    setModelLoading(true);
-
-    const worker = new Worker(beatnetWorkerUrl, { type: "module" });
-    workerRef.current = worker;
-
-    return new Promise<void>((resolve, reject) => {
-      worker.onerror = (event) => {
-        console.error("Worker error:", event.message, event.filename, event.lineno);
-        setModelLoading(false);
-        reject(new Error(event.message));
-      };
-
-      worker.onmessage = (e) => {
-        const data = e.data;
-        if (data.type === "ready") {
-          setModelReady(true);
-          setModelLoading(false);
-
-          // Switch to production message handler
-          worker.onmessage = handleWorkerMessage;
-          resolve();
-        } else if (data.type === "error") {
-          setModelLoading(false);
-          reject(new Error(data.message));
-        }
-      };
-
-      worker.postMessage({
-        type: "init",
-        baseUrl: import.meta.env.BASE_URL,
-        mobileProfile: mobileProfileRef.current,
+      const results = await session.run({
+        input: inputTensor,
+        h_in: hStateRef.current,
+        c_in: cStateRef.current,
       });
-    });
-  }, [modelLoading]);
 
-  const handleWorkerMessage = useCallback(
-    (e: MessageEvent) => {
-      const data = e.data;
-      if (data.type === "bpm") {
-        const now = Date.now();
-        const uiUpdateMs = mobileProfileRef.current
-          ? MOBILE_UI_UPDATE_MS
-          : UI_UPDATE_MS;
-        if (now - lastUiUpdateRef.current < uiUpdateMs) return;
-        lastUiUpdateRef.current = now;
+      const hOut = results["h_out"] as Tensor;
+      const cOut = results["c_out"] as Tensor;
+      const outputTensor = results["output"] as Tensor;
 
-        let raw = data.bpm as number;
-        const conf = data.confidence as number;
+      const logits = Array.from(outputTensor.data as Float32Array);
 
-        // Octave correction: if a tempo prior is set, check if the raw
-        // estimate is near a half or double of the target and correct it
-        const prior = tempoPriorRef.current;
-        if (prior !== null) {
-          const ratio = raw / prior;
-          // Within ~15% of half the target? → double it
-          if (ratio > 0.42 && ratio < 0.58) raw *= 2;
-          // Within ~15% of double the target? → halve it
-          else if (ratio > 1.7 && ratio < 2.3) raw /= 2;
-        }
+      // Update LSTM state for the next inference step
+      hStateRef.current = hOut;
+      cStateRef.current = cOut;
 
-        lastUpdateRef.current = now;
+      const maxVal = Math.max(logits[0]!, logits[1]!, logits[2]!);
+      const exp0 = Math.exp(logits[0]! - maxVal);
+      const exp1 = Math.exp(logits[1]! - maxVal);
+      const exp2 = Math.exp(logits[2]! - maxVal);
+      const sumExp = exp0 + exp1 + exp2;
 
-        const win = bpmWindowRef.current;
-
-        // Detect tempo change: if new value diverges >10% from median,
-        // clear the window so we adapt quickly instead of rejecting it
-        if (win.length >= 3) {
-          const sorted = [...win].sort((a, b) => a - b);
-          const median = sorted[Math.floor(sorted.length / 2)]!;
-          if (Math.abs(raw - median) / median > 0.1) {
-            win.length = 0; // reset — tempo changed
-          }
-        }
-
-        win.push(raw);
-        if (win.length > 25) win.shift();
-
-        const sorted = [...win].sort((a, b) => a - b);
-        const bpm = sorted[Math.floor(sorted.length / 2)]!;
-
-        setCurrentBpm(bpm);
-        setConfidence(conf);
-        setIsStable(conf > 0.5);
-
-        setTimeSeries((prev) => {
-          const next = [
-            ...prev,
-            {
-              timestamp: now - startTimeRef.current,
-              bpm,
-              confidence: conf,
-            },
-          ];
-          const maxSeriesPoints = mobileProfileRef.current
-            ? MOBILE_MAX_SERIES_POINTS
-            : MAX_SERIES_POINTS;
-          const trimmed =
-            next.length > maxSeriesPoints
-              ? next.slice(next.length - maxSeriesPoints)
-              : next;
-          timeSeriesRef.current = trimmed;
-          return trimmed;
-        });
-      }
+      return {
+        beatProb: exp0 / sumExp,
+        downbeatProb: exp1 / sumExp,
+      };
     },
     [],
   );
 
-  const start = useCallback(async (): Promise<MediaStream> => {
-    // Ask for mic access first. This avoids paying model startup costs
-    // when permission is denied and defers heavy init until user intent
-    // is confirmed.
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // ---------------------------------------------------------------------------
+  // Process a single 441-sample hop
+  // ---------------------------------------------------------------------------
 
-    // Initialize model if not ready.
-    // If this fails, release the microphone before bubbling the error.
-    if (!workerRef.current) {
+  const processHop = useCallback(
+    async (samples: Float32Array) => {
+      if (!specStateRef.current || !pfRef.current || !ssConfigRef.current) return;
+
+      const features = computeFeatures(specStateRef.current, samples);
+      if (!features) return;
+
+      frameCountRef.current++;
+      if (frameCountRef.current < 5) return;
+
       try {
-        await initModel();
-      } catch (err) {
-        for (const track of stream.getTracks()) {
-          track.stop();
+        const { beatProb, downbeatProb } = await runInference(features);
+        const activation = Math.max(beatProb, downbeatProb);
+        const rawBpm = updateParticleFilter(pfRef.current, ssConfigRef.current, activation);
+
+        if (rawBpm <= 0) return;
+
+        pfRef.current.bpmWindow.push(rawBpm);
+        if (pfRef.current.bpmWindow.length > BPM_WINDOW_SIZE) {
+          pfRef.current.bpmWindow.shift();
         }
-        console.error("Failed to initialize BeatNet model:", err);
-        throw err;
+
+        const sorted = [...pfRef.current.bpmWindow].sort((a, b) => a - b);
+        const bpm = sorted[Math.floor(sorted.length / 2)]!;
+        const isBeat = beatProb > 0.3 || downbeatProb > 0.3;
+
+        let variance = 0;
+        for (let i = 0; i < pfRef.current.numParticles; i++) {
+          const diff = (ssConfigRef.current.tempi[pfRef.current.tempoIdx[i]!] ?? 0) - rawBpm;
+          variance += pfRef.current.particles[i]! * diff * diff;
+        }
+        const cv = Math.sqrt(variance) / rawBpm;
+        const conf = Math.max(0, Math.min(1, 1 - cv * 8));
+
+        const now = Date.now();
+        if (now - lastUiUpdateRef.current < 100) return;
+        lastUiUpdateRef.current = now;
+
+        // Octave correction
+        let displayBpm = bpm;
+        const prior = tempoPriorRef.current;
+        if (prior !== null) {
+          const ratio = displayBpm / prior;
+          if (ratio > HALF_TEMPO_RATIO_LO && ratio < HALF_TEMPO_RATIO_HI) displayBpm *= 2;
+          else if (ratio > DOUBLE_TEMPO_RATIO_LO && ratio < DOUBLE_TEMPO_RATIO_HI) displayBpm /= 2;
+        }
+
+        const win = bpmWindowRef.current;
+        if (win.length >= 3) {
+          const s = [...win].sort((a, b) => a - b);
+          const median = s[Math.floor(s.length / 2)]!;
+          if (Math.abs(displayBpm - median) / median > 0.1) {
+            win.length = 0;
+          }
+        }
+        win.push(displayBpm);
+        if (win.length > 25) win.shift();
+
+        const finalSorted = [...win].sort((a, b) => a - b);
+        const finalBpm = finalSorted[Math.floor(finalSorted.length / 2)]!;
+
+        lastUpdateRef.current = now;
+
+        setCurrentBpm(Math.round(finalBpm * 100) / 100);
+        setConfidence(conf);
+        setIsStable(conf > 0.5);
+
+        if (isBeat) {
+          setTimeSeries((prev) => {
+            const next = [
+              ...prev,
+              {
+                timestamp: now - startTimeRef.current,
+                bpm: Math.round(finalBpm * 100) / 100,
+                confidence: conf,
+              },
+            ];
+            const trimmed =
+              next.length > MAX_SERIES_POINTS ? next.slice(next.length - MAX_SERIES_POINTS) : next;
+            timeSeriesRef.current = trimmed;
+            return trimmed;
+          });
+        }
+      } catch (err) {
+        console.error("[BeatNet] inference error:", err);
       }
-    }
+    },
+    [runInference],
+  );
 
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
-    }
-    const audioCtx = audioContextRef.current;
+  // ---------------------------------------------------------------------------
+  // Poll the WAV file and extract new PCM samples
+  // ---------------------------------------------------------------------------
 
-    if (audioCtx.state === "suspended") {
-      await audioCtx.resume();
-    }
+  const pollRecording = useCallback(async () => {
+    const recording = recordingRef.current;
+    if (!recording || !isActiveRef.current) return;
 
-    streamRef.current = stream;
+    try {
+      const uri = recording.getURI();
+      if (!uri) return;
 
-    // Register AudioWorklet processor from a plain JS file so Safari can parse it.
-    const processorUrl = `${import.meta.env.BASE_URL}worklets/beatnet-processor.js?v=${__COMMIT_SHA__}`;
-    await audioCtx.audioWorklet.addModule(processorUrl);
+      // Read the current recording file
+      const info = await FileSystem.getInfoAsync(uri);
+      if (!info.exists || info.size === undefined) return;
 
-    const workletNode = new AudioWorkletNode(audioCtx, "beatnet-processor");
-    workletNodeRef.current = workletNode;
+      const fileSize = info.size;
+      if (fileSize <= WAV_HEADER_BYTES) return;
 
-    // Forward audio hops from worklet to web worker
-    workletNode.port.onmessage = (e) => {
-      workerRef.current?.postMessage(e.data);
-    };
+      // Only process new bytes since last poll
+      const newBytes = fileSize - processedBytesRef.current;
+      if (newBytes < 2) return; // need at least one 16-bit sample
 
-    const source = audioCtx.createMediaStreamSource(stream);
-    sourceRef.current = source;
+      // Read the entire file and slice new bytes
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: "base64",
+        position: 0,
+        length: fileSize,
+      });
 
-    // Audio level metering on raw signal
-    const analyserNode = audioCtx.createAnalyser();
-    analyserNode.fftSize = 256;
-    analyserNodeRef.current = analyserNode;
-    source.connect(analyserNode);
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
 
-    source.connect(workletNode);
-    // worklet doesn't output audio — connect to nothing (just processes)
+      // Parse full WAV once to get format info, then slice PCM data
+      const allSamples = wavBytesToFloat32(bytes);
 
-    // Poll audio level
-    const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
-    const SMOOTHING = 0.8;
-    let smoothedLevel = 0;
-    const pollLevel = () => {
-      analyserNode.getByteTimeDomainData(dataArray);
+      // Calculate audio level (RMS of recent samples)
+      const levelWindow = allSamples.slice(-256);
       let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const sample = dataArray[i]!;
-        const v = (sample - 128) / 128;
-        sum += v * v;
+      for (let i = 0; i < levelWindow.length; i++) {
+        sum += levelWindow[i]! * levelWindow[i]!;
       }
-      const rms = Math.sqrt(sum / dataArray.length);
-      const scaled = Math.min(1, rms * 2);
-      smoothedLevel = SMOOTHING * smoothedLevel + (1 - SMOOTHING) * scaled;
-      const now = Date.now();
-      const audioLevelUpdateMs = mobileProfileRef.current
-        ? MOBILE_AUDIO_LEVEL_UPDATE_MS
-        : AUDIO_LEVEL_UPDATE_MS;
-      if (now - lastAudioLevelUpdateRef.current >= audioLevelUpdateMs) {
-        lastAudioLevelUpdateRef.current = now;
-        setAudioLevel(smoothedLevel);
-      }
-      levelRafRef.current = requestAnimationFrame(pollLevel);
-    };
-    levelRafRef.current = requestAnimationFrame(pollLevel);
+      const rms = Math.sqrt(sum / levelWindow.length);
+      setAudioLevel(Math.min(1, rms * 2));
 
-    const sTime = Date.now();
-    startTimeRef.current = sTime;
+      // Skip samples we've already processed
+      const alreadyProcessedSamples = Math.max(
+        0,
+        Math.floor((processedBytesRef.current - WAV_HEADER_BYTES) / 2),
+      );
+      const newSamples = allSamples.slice(alreadyProcessedSamples);
+      processedBytesRef.current = fileSize;
+
+      // Feed new samples as hops
+      let offset = 0;
+      const hops: Float32Array[] = [];
+      while (offset + HOP_SIZE <= newSamples.length) {
+        hops.push(newSamples.slice(offset, offset + HOP_SIZE));
+        offset += HOP_SIZE;
+      }
+
+      // Drop hops if queue is too large (temporal discontinuity)
+      if (hops.length > MAX_HOPS_BEFORE_RESYNC) {
+        hops.splice(0, hops.length - HOPS_TO_RETAIN_AFTER_RESYNC);
+        if (pfRef.current && ssConfigRef.current) {
+          resyncPhases(pfRef.current, ssConfigRef.current);
+        }
+      }
+
+      for (const hop of hops) {
+        await processHop(hop);
+      }
+    } catch (err) {
+      console.error("[BeatNet] poll error:", err);
+    }
+  }, [processHop]);
+
+  // ---------------------------------------------------------------------------
+  // Model initialization
+  // ---------------------------------------------------------------------------
+
+  const initModel = useCallback(async () => {
+    if (sessionRef.current || modelLoading) return;
+    setModelLoading(true);
+
+    try {
+      console.log("[BeatNet] Creating ONNX inference session...");
+      const modelAsset = Asset.fromModule(MODEL_ASSET);
+      if (!modelAsset.localUri) {
+        await modelAsset.downloadAsync();
+      }
+      const modelUri = modelAsset.localUri ?? modelAsset.uri;
+      const session = await InferenceSession.create(modelUri);
+      sessionRef.current = session;
+
+      const fbConfig = FILTERBANK_ASSET;
+      const ssConfig = STATE_SPACES_ASSET;
+      ssConfigRef.current = ssConfig;
+
+      console.log("[BeatNet] Initializing spectrogram state...");
+      specStateRef.current = createSpectrogramState(fbConfig);
+      pfRef.current = createParticleFilter(
+        ssConfig,
+        PARTICLE_COUNT,
+        BPM_WINDOW_SIZE,
+        tempoPriorRef.current,
+      );
+      resetLSTM();
+
+      setModelReady(true);
+      setModelLoading(false);
+      console.log("[BeatNet] Ready!");
+    } catch (err) {
+      console.error("[BeatNet] init failed:", err);
+      setModelLoading(false);
+      throw err;
+    }
+  }, [modelLoading, resetLSTM]);
+
+  // ---------------------------------------------------------------------------
+  // Start / stop
+  // ---------------------------------------------------------------------------
+
+  const start = useCallback(async () => {
+    // Request microphone permission
+    const { status } = await Audio.requestPermissionsAsync();
+    if (status !== "granted") {
+      throw new Error("Microphone permission is required");
+    }
+
+    // Initialize model if not ready
+    if (!sessionRef.current) {
+      await initModel();
+    }
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: true,
+    });
+
+    // Configure recording with Linear PCM at 22050 Hz
+    const recording = new Audio.Recording();
+    await recording.prepareToRecordAsync({
+      android: {
+        extension: ".wav",
+        outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+        audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+        sampleRate: SAMPLE_RATE,
+        numberOfChannels: 1,
+        bitRate: 128000,
+      },
+      ios: {
+        extension: ".wav",
+        outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+        audioQuality: Audio.IOSAudioQuality.HIGH,
+        sampleRate: SAMPLE_RATE,
+        numberOfChannels: 1,
+        bitRate: 128000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+      },
+      web: {
+        mimeType: "audio/wav",
+        bitsPerSecond: 128000,
+      },
+      keepAudioActiveHint: true,
+      isMeteringEnabled: true,
+    });
+    recordingRef.current = recording;
+    processedBytesRef.current = WAV_HEADER_BYTES;
+
+    startTimeRef.current = Date.now();
     lastUpdateRef.current = 0;
     lastUiUpdateRef.current = 0;
-    lastAudioLevelUpdateRef.current = 0;
-    timeSeriesRef.current = [];
+    frameCountRef.current = 0;
     bpmWindowRef.current = [];
+    timeSeriesRef.current = [];
+    isActiveRef.current = true;
+
+    resetAll();
+
     setIsActive(true);
     setTimeSeries([]);
     setCurrentBpm(null);
     setIsStable(false);
     setConfidence(0);
 
-    // Fill timer for chart continuity
+    await recording.startAsync();
+
+    // Poll recording file every POLL_INTERVAL_MS
+    pollTimerRef.current = setInterval(() => {
+      void pollRecording();
+    }, POLL_INTERVAL_MS);
+
+    // Chart fill timer: insert null points when no beats detected
     fillTimerRef.current = setInterval(() => {
       const now = Date.now();
       if (now - lastUpdateRef.current < 1500) return;
       setTimeSeries((prev) => {
-        const next = [
-          ...prev,
-          { timestamp: now - sTime, bpm: null, confidence: 0 },
-        ];
-        const maxSeriesPoints = mobileProfileRef.current
-          ? MOBILE_MAX_SERIES_POINTS
-          : MAX_SERIES_POINTS;
+        const next = [...prev, { timestamp: now - startTimeRef.current, bpm: null, confidence: 0 }];
         const trimmed =
-          next.length > maxSeriesPoints
-            ? next.slice(next.length - maxSeriesPoints)
-            : next;
+          next.length > MAX_SERIES_POINTS ? next.slice(next.length - MAX_SERIES_POINTS) : next;
         timeSeriesRef.current = trimmed;
         return trimmed;
       });
     }, 1000);
-
-    return stream;
-  }, [initModel]);
+  }, [initModel, resetAll, pollRecording]);
 
   const stop = useCallback(async () => {
-    await disconnect();
+    isActiveRef.current = false;
+
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (fillTimerRef.current) {
+      clearInterval(fillTimerRef.current);
+      fillTimerRef.current = null;
+    }
+
+    if (recordingRef.current) {
+      try {
+        await recordingRef.current.stopAndUnloadAsync();
+      } catch {
+        // ignore errors on stop
+      }
+      recordingRef.current = null;
+    }
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+    });
+
     setIsActive(false);
     setAudioLevel(0);
-  }, [disconnect]);
+  }, []);
+
+  const setTempoPrior = useCallback((bpm: number | null) => {
+    tempoPriorRef.current = bpm;
+    if (pfRef.current) pfRef.current.tempoPriorBpm = bpm;
+  }, []);
 
   const getTimeSeries = useCallback(() => timeSeriesRef.current, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      void stop();
+    };
+  }, [stop]);
 
   return {
     currentBpm,

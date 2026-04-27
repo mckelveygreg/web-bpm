@@ -1,30 +1,42 @@
+node_modules/
+.expo/
+dist/
+build/
+ios/
+android/
+*.orig.*
+web-build/
+
 # Logs
-logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-.yarn/install-state.gz
+# Credentials & signing
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
 
-# Editor directories and files
+# Editor
+.idea/
+*.iml
+.DS_Store
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Python tooling
+# Yarn Berry
+.yarn/install-state.gz
+
+# Python tooling (scripts/)
 __pycache__/
 *.py[cod]
 .venv/

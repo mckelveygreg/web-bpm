@@ -1,4 +1,6 @@
-import { Box, LinearProgress, Typography } from "@mui/material";
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import Svg, { Rect, Line, Circle } from "react-native-svg";
 
 interface TunerGaugeProps {
   note: string | null;
@@ -15,6 +17,9 @@ function centsColor(c: number): string {
   return "#f44336";
 }
 
+const GAUGE_WIDTH = 280;
+const GAUGE_HEIGHT = 20;
+
 export default function TunerGauge({
   note,
   octave,
@@ -22,188 +27,218 @@ export default function TunerGauge({
   cents,
   audioLevel,
 }: TunerGaugeProps) {
-  const color = note ? centsColor(cents) : "grey.700";
+  const dotColor = note ? centsColor(cents) : "#616161";
   const inTune = note !== null && Math.abs(cents) <= 5;
 
+  // Map cents (-50..+50) to 0..GAUGE_WIDTH
+  const needleX = Math.max(
+    0,
+    Math.min(GAUGE_WIDTH, (0.5 + (note ? cents : 0) / 100) * GAUGE_WIDTH),
+  );
+
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        py: 3,
-      }}
-    >
+    <View style={styles.container}>
       {/* Note name + octave */}
-      <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
-        <Typography
-          variant="h1"
-          sx={{
-            fontSize: "7rem",
-            fontWeight: 700,
-            lineHeight: 1,
-            color: note ? "text.primary" : "text.disabled",
-          }}
-        >
-          {note ?? "—"}
-        </Typography>
-        {octave !== null && (
-          <Typography
-            variant="h3"
-            sx={{
-              fontSize: "2.5rem",
-              fontWeight: 400,
-              color: "text.secondary",
-              lineHeight: 1,
-            }}
-          >
-            {octave}
-          </Typography>
-        )}
-      </Box>
+      <View style={styles.noteRow}>
+        <Text style={[styles.noteText, !note && styles.noteTextDisabled]}>{note ?? "—"}</Text>
+        {octave !== null && <Text style={styles.octaveText}>{octave}</Text>}
+      </View>
 
       {/* Frequency readout */}
-      <Typography
-        variant="body1"
-        sx={{
-          color: "text.secondary",
-          mt: 1,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {frequency !== null ? `${frequency} Hz` : "—"}
-      </Typography>
+      <Text style={styles.freqText}>{frequency !== null ? `${frequency} Hz` : "—"}</Text>
 
       {/* In-tune indicator */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}>
-        <Box
-          sx={{
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            backgroundColor: color,
-            boxShadow: note ? `0 0 8px ${typeof color === "string" ? color : ""}` : "none",
-          }}
+      <View style={styles.statusRow}>
+        <View
+          style={[
+            styles.statusDot,
+            { backgroundColor: dotColor },
+            note ? { shadowColor: dotColor, shadowOpacity: 0.8, shadowRadius: 4 } : undefined,
+          ]}
         />
-        <Typography variant="body2" sx={{ color: "text.secondary" }}>
+        <Text style={styles.statusLabel}>
           {!note ? "Listening" : inTune ? "In Tune" : `${cents > 0 ? "+" : ""}${cents}¢`}
-        </Typography>
-      </Box>
+        </Text>
+      </View>
 
       {/* Cents gauge */}
-      <Box sx={{ width: "80%", mt: 3, position: "relative" }}>
-        {/* Background bar with colored zones */}
-        <Box
-          sx={{
-            height: 12,
-            borderRadius: 6,
-            overflow: "hidden",
-            display: "flex",
-            bgcolor: "grey.800",
-          }}
-        >
-          {/* Red left */}
-          <Box sx={{ flex: 35, bgcolor: "rgba(244,67,54,0.15)" }} />
-          {/* Yellow left */}
-          <Box sx={{ flex: 10, bgcolor: "rgba(255,152,0,0.2)" }} />
-          {/* Green center */}
-          <Box sx={{ flex: 10, bgcolor: "rgba(76,175,80,0.25)" }} />
-          {/* Yellow right */}
-          <Box sx={{ flex: 10, bgcolor: "rgba(255,152,0,0.2)" }} />
-          {/* Red right */}
-          <Box sx={{ flex: 35, bgcolor: "rgba(244,67,54,0.15)" }} />
-        </Box>
+      <View style={styles.gaugeContainer}>
+        <Svg width={GAUGE_WIDTH} height={GAUGE_HEIGHT + 8}>
+          {/* Background zones */}
+          <Rect
+            x={0}
+            y={4}
+            width={GAUGE_WIDTH * 0.35}
+            height={GAUGE_HEIGHT}
+            fill="rgba(244,67,54,0.15)"
+            rx={0}
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.35}
+            y={4}
+            width={GAUGE_WIDTH * 0.1}
+            height={GAUGE_HEIGHT}
+            fill="rgba(255,152,0,0.2)"
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.45}
+            y={4}
+            width={GAUGE_WIDTH * 0.1}
+            height={GAUGE_HEIGHT}
+            fill="rgba(76,175,80,0.25)"
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.55}
+            y={4}
+            width={GAUGE_WIDTH * 0.1}
+            height={GAUGE_HEIGHT}
+            fill="rgba(255,152,0,0.2)"
+          />
+          <Rect
+            x={GAUGE_WIDTH * 0.65}
+            y={4}
+            width={GAUGE_WIDTH * 0.35}
+            height={GAUGE_HEIGHT}
+            fill="rgba(244,67,54,0.15)"
+            rx={0}
+          />
 
-        {/* Center tick mark */}
-        <Box
-          sx={{
-            position: "absolute",
-            left: "50%",
-            top: -2,
-            transform: "translateX(-50%)",
-            width: 2,
-            height: 16,
-            bgcolor: "grey.500",
-            borderRadius: 1,
-          }}
-        />
+          {/* Center tick */}
+          <Line
+            x1={GAUGE_WIDTH / 2}
+            y1={0}
+            x2={GAUGE_WIDTH / 2}
+            y2={GAUGE_HEIGHT + 8}
+            stroke="#757575"
+            strokeWidth={2}
+          />
 
-        {/* Needle */}
-        <Box
-          sx={{
-            position: "absolute",
-            top: -4,
-            // Map cents (-50..+50) to 0%..100%
-            left: `${50 + (note ? cents : 0)}%`,
-            transform: "translateX(-50%)",
-            width: 8,
-            height: 20,
-            borderRadius: 4,
-            bgcolor: note ? centsColor(cents) : "grey.600",
-            boxShadow: note ? `0 0 6px ${centsColor(cents)}` : "none",
-            transition: "left 0.08s linear, background-color 0.15s ease",
-          }}
-        />
+          {/* Needle */}
+          <Circle
+            cx={needleX}
+            cy={4 + GAUGE_HEIGHT / 2}
+            r={6}
+            fill={note ? centsColor(cents) : "#616161"}
+          />
+        </Svg>
 
         {/* Scale labels */}
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            mt: 0.5,
-          }}
-        >
-          <Typography variant="caption" sx={{ color: "text.disabled" }}>
-            −50¢
-          </Typography>
-          <Typography variant="caption" sx={{ color: "text.disabled" }}>
-            0
-          </Typography>
-          <Typography variant="caption" sx={{ color: "text.disabled" }}>
-            +50¢
-          </Typography>
-        </Box>
-      </Box>
+        <View style={styles.scaleLabels}>
+          <Text style={styles.scaleLabel}>−50¢</Text>
+          <Text style={styles.scaleLabel}>0</Text>
+          <Text style={styles.scaleLabel}>+50¢</Text>
+        </View>
+      </View>
 
       {/* Audio level */}
       {audioLevel > 0 && (
-        <Box sx={{ width: "60%", mt: 3 }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              mb: 0.5,
-            }}
-          >
-            <Typography variant="caption" sx={{ color: "text.secondary" }}>
-              Mic Level
-            </Typography>
-            <Typography variant="caption" sx={{ color: "text.secondary" }}>
-              {Math.round(audioLevel * 100)}%
-            </Typography>
-          </Box>
-          <LinearProgress
-            variant="determinate"
-            value={audioLevel * 100}
-            sx={{
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: "grey.800",
-              "& .MuiLinearProgress-bar": {
-                borderRadius: 4,
-                backgroundColor:
-                  audioLevel > 0.7
-                    ? "#4caf50"
-                    : audioLevel > 0.3
-                      ? "#ff9800"
-                      : "#f44336",
-                transition: "transform 0.1s linear",
-              },
-            }}
-          />
-        </Box>
+        <View style={styles.levelContainer}>
+          <View style={styles.levelHeader}>
+            <Text style={styles.levelLabel}>Mic Level</Text>
+            <Text style={styles.levelLabel}>{Math.round(audioLevel * 100)}%</Text>
+          </View>
+          <View style={styles.levelBarBg}>
+            <View
+              style={[
+                styles.levelBarFill,
+                {
+                  width: `${audioLevel * 100}%`,
+                  backgroundColor:
+                    audioLevel > 0.7 ? "#4caf50" : audioLevel > 0.3 ? "#ff9800" : "#f44336",
+                },
+              ]}
+            />
+          </View>
+        </View>
       )}
-    </Box>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+  },
+  noteRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  noteText: {
+    fontSize: 80,
+    fontWeight: "700",
+    lineHeight: 88,
+    color: "#ffffff",
+  },
+  noteTextDisabled: {
+    color: "#616161",
+  },
+  octaveText: {
+    fontSize: 36,
+    fontWeight: "400",
+    color: "#9e9e9e",
+    lineHeight: 56,
+    paddingBottom: 8,
+  },
+  freqText: {
+    color: "#9e9e9e",
+    fontSize: 16,
+    marginTop: 4,
+    fontVariant: ["tabular-nums"],
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 16,
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  statusLabel: {
+    color: "#9e9e9e",
+    fontSize: 14,
+  },
+  gaugeContainer: {
+    marginTop: 24,
+    alignItems: "center",
+    width: GAUGE_WIDTH,
+  },
+  scaleLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: GAUGE_WIDTH,
+    marginTop: 2,
+  },
+  scaleLabel: {
+    color: "#616161",
+    fontSize: 11,
+  },
+  levelContainer: {
+    width: "60%",
+    marginTop: 24,
+  },
+  levelHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  levelLabel: {
+    color: "#9e9e9e",
+    fontSize: 12,
+  },
+  levelBarBg: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#424242",
+    overflow: "hidden",
+  },
+  levelBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+});
