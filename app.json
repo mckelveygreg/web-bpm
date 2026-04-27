@@ -11,6 +11,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.mckelveygreg.webbpm",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "Web BPM uses the microphone to detect tempo and pitch in real time."
       }
     },

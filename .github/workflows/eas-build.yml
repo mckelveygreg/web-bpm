@@ -3,12 +3,8 @@ name: EAS Build
 on:
   push:
     branches:
-      - copilot/vscode-moa9p7zs-111u
-      - copilot/add-eas-build-configuration
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - copilot/vscode-moa9p7zs-111u
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -32,10 +28,11 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Install native dependencies
-        working-directory: native
-        run: npm install
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
 
       - name: Run EAS Build (iOS preview, non-interactive)
-        working-directory: native
         run: eas build --platform ios --profile preview --non-interactive

@@ -1,5 +1,5 @@
-import { Box, LinearProgress, Typography } from "@mui/material";
-import { keyframes } from "@emotion/react";
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
 
 interface BpmDisplayProps {
   bpm: number | null;
@@ -8,15 +8,10 @@ interface BpmDisplayProps {
   audioLevel: number;
 }
 
-const pulse = keyframes`
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-`;
-
 function getStabilityColor(isStable: boolean, confidence: number): string {
-  if (isStable) return "#4caf50"; // green
-  if (confidence >= 0.1) return "#ff9800"; // orange/yellow
-  return "#f44336"; // red
+  if (isStable) return "#4caf50";
+  if (confidence >= 0.1) return "#ff9800";
+  return "#f44336";
 }
 
 function getStabilityLabel(isStable: boolean, confidence: number): string {
@@ -35,93 +30,110 @@ export default function BpmDisplay({
   const label = getStabilityLabel(isStable, confidence);
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        py: 1,
-      }}
-    >
-      <Typography
-        variant="h1"
-        sx={{
-          fontSize: "4.5rem",
-          fontWeight: 700,
-          lineHeight: 1,
-          color: bpm ? "text.primary" : "text.disabled",
-          animation: bpm ? `${pulse} 1s ease-in-out infinite` : "none",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
+    <View style={styles.container}>
+      <Text style={[styles.bpmText, !bpm && styles.bpmTextDisabled]}>
         {bpm !== null ? bpm.toFixed(2) : "—"}
-      </Typography>
-      <Typography
-        variant="h6"
-        sx={{ color: "text.secondary", letterSpacing: 2, mt: 0.5 }}
-      >
-        BPM
-      </Typography>
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          mt: 1,
-        }}
-      >
-        <Box
-          sx={{
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            backgroundColor: bpm ? color : "grey.700",
-            boxShadow: bpm ? `0 0 8px ${color}` : "none",
-          }}
+      </Text>
+      <Text style={styles.bpmLabel}>BPM</Text>
+
+      <View style={styles.statusRow}>
+        <View
+          style={[
+            styles.statusDot,
+            { backgroundColor: bpm ? color : "#616161" },
+            bpm ? { shadowColor: color, shadowOpacity: 0.8, shadowRadius: 4 } : undefined,
+          ]}
         />
-        <Typography variant="body2" sx={{ color: "text.secondary" }}>
-          {bpm ? label : "Idle"}
-        </Typography>
-      </Box>
+        <Text style={styles.statusLabel}>{bpm ? label : "Idle"}</Text>
+      </View>
 
       {audioLevel > 0 && (
-        <Box sx={{ width: "60%", mt: 2 }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              mb: 0.5,
-            }}
-          >
-            <Typography variant="caption" sx={{ color: "text.secondary" }}>
-              Mic Level
-            </Typography>
-            <Typography variant="caption" sx={{ color: "text.secondary" }}>
-              {Math.round(audioLevel * 100)}%
-            </Typography>
-          </Box>
-          <LinearProgress
-            variant="determinate"
-            value={audioLevel * 100}
-            sx={{
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: "grey.800",
-              "& .MuiLinearProgress-bar": {
-                borderRadius: 4,
-                backgroundColor:
-                  audioLevel > 0.7
-                    ? "#4caf50"
-                    : audioLevel > 0.3
-                      ? "#ff9800"
-                      : "#f44336",
-                transition: "transform 0.1s linear",
-              },
-            }}
-          />
-        </Box>
+        <View style={styles.levelContainer}>
+          <View style={styles.levelHeader}>
+            <Text style={styles.levelLabel}>Mic Level</Text>
+            <Text style={styles.levelLabel}>{Math.round(audioLevel * 100)}%</Text>
+          </View>
+          <View style={styles.levelBarBg}>
+            <View
+              style={[
+                styles.levelBarFill,
+                {
+                  width: `${audioLevel * 100}%`,
+                  backgroundColor:
+                    audioLevel > 0.7
+                      ? "#4caf50"
+                      : audioLevel > 0.3
+                        ? "#ff9800"
+                        : "#f44336",
+                },
+              ]}
+            />
+          </View>
+        </View>
       )}
-    </Box>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  bpmText: {
+    fontSize: 72,
+    fontWeight: "700",
+    lineHeight: 80,
+    color: "#ffffff",
+    fontVariant: ["tabular-nums"],
+  },
+  bpmTextDisabled: {
+    color: "#616161",
+  },
+  bpmLabel: {
+    fontSize: 18,
+    fontWeight: "400",
+    color: "#9e9e9e",
+    letterSpacing: 4,
+    marginTop: 4,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  statusLabel: {
+    color: "#9e9e9e",
+    fontSize: 14,
+  },
+  levelContainer: {
+    width: "60%",
+    marginTop: 16,
+  },
+  levelHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  levelLabel: {
+    color: "#9e9e9e",
+    fontSize: 12,
+  },
+  levelBarBg: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#424242",
+    overflow: "hidden",
+  },
+  levelBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+});

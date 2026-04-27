@@ -1,5 +1,19 @@
+/**
+ * usePitchDetector – React Native hook for real-time pitch detection.
+ *
+ * Uses expo-av Audio.Recording with Linear PCM and polls the WAV file
+ * to extract audio samples, then runs the YIN algorithm for pitch detection.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { yin } from "../utils/yin";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
+import { yin } from "../yin";
+
+const SAMPLE_RATE = 44100;
+const YIN_BUFFER_SIZE = 8192;
+const POLL_INTERVAL_MS = 60;
+const WAV_HEADER_BYTES = 44;
+const LEVEL_SMOOTHING = 0.8;
 
 const NOTE_NAMES = [
   "C", "C♯", "D", "D♯", "E", "F",
@@ -14,14 +28,49 @@ function frequencyToNote(
   const semitones = 12 * Math.log2(freq / A4);
   const rounded = Math.round(semitones);
   const cents = Math.round((semitones - rounded) * 100);
-  // A4 is MIDI note 69 → note index 9, octave 4
   const midi = 69 + rounded;
   const noteIndex = ((midi % 12) + 12) % 12;
   const octave = Math.floor(midi / 12) - 1;
   return { note: NOTE_NAMES[noteIndex]!, octave, cents };
 }
 
-const LEVEL_SMOOTHING = 0.8;
+function wavBytesToFloat32Mono(bytes: Uint8Array): Float32Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const numChannels = view.getUint16(22, true);
+  const bitsPerSample = view.getUint16(34, true);
+  const audioFormat = view.getUint16(20, true);
+
+  const dataOffset = WAV_HEADER_BYTES;
+  const numBytes = bytes.byteLength - dataOffset;
+  const bytesPerSample = bitsPerSample / 8;
+  const numSamples = Math.floor(numBytes / (bytesPerSample * numChannels));
+  const result = new Float32Array(numSamples);
+
+  if (audioFormat === 3 && bitsPerSample === 32) {
+    for (let i = 0; i < numSamples; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numChannels; ch++) {
+        sum += view.getFloat32(dataOffset + (i * numChannels + ch) * 4, true);
+      }
+      result[i] = sum / numChannels;
+    }
+  } else {
+    const maxVal = Math.pow(2, bitsPerSample - 1);
+    for (let i = 0; i < numSamples; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numChannels; ch++) {
+        const offset = dataOffset + (i * numChannels + ch) * bytesPerSample;
+        const sample = bytesPerSample === 2
+          ? view.getInt16(offset, true)
+          : view.getInt8(offset);
+        sum += sample / maxVal;
+      }
+      result[i] = sum / numChannels;
+    }
+  }
+
+  return result;
+}
 
 export function usePitchDetector() {
   const [note, setNote] = useState<string | null>(null);
@@ -31,98 +80,54 @@ export function usePitchDetector() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [isActive, setIsActive] = useState(false);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef(0);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isActiveRef = useRef(false);
+  const smoothedLevelRef = useRef(0);
 
-  const disconnect = useCallback(async () => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
+  const poll = useCallback(async () => {
+    const recording = recordingRef.current;
+    if (!recording || !isActiveRef.current) return;
 
-    sourceRef.current?.disconnect();
-    sourceRef.current = null;
-    analyserRef.current?.disconnect();
-    analyserRef.current = null;
+    try {
+      const uri = recording.getURI();
+      if (!uri) return;
 
-    if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) {
-        track.stop();
+      const info = await FileSystem.getInfoAsync(uri);
+      if (!info.exists || info.size === undefined) return;
+      if (info.size <= WAV_HEADER_BYTES) return;
+
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+        position: 0,
+        length: info.size,
+      });
+
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
       }
-      streamRef.current = null;
-    }
 
-    await audioContextRef.current?.close();
-    audioContextRef.current = null;
-  }, []);
+      const samples = wavBytesToFloat32Mono(bytes);
+      if (samples.length < YIN_BUFFER_SIZE) return;
 
-  useEffect(() => {
-    return () => {
-      void disconnect();
-    };
-  }, [disconnect]);
+      // Use the most recent YIN_BUFFER_SIZE samples
+      const buf = samples.slice(samples.length - YIN_BUFFER_SIZE);
 
-  // Suspend/resume when app is backgrounded
-  useEffect(() => {
-    const handler = () => {
-      const ctx = audioContextRef.current;
-      if (!ctx || !isActive) return;
-      if (document.hidden) {
-        void ctx.suspend();
-      } else {
-        void ctx.resume();
-      }
-    };
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
-  }, [isActive]);
-
-  const start = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
-    }
-    const ctx = audioContextRef.current;
-
-    if (ctx.state === "suspended") {
-      await ctx.resume();
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    streamRef.current = stream;
-
-    const source = ctx.createMediaStreamSource(stream);
-    sourceRef.current = source;
-
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 8192;
-    analyserRef.current = analyser;
-    source.connect(analyser);
-
-    const timeBuf = new Float32Array(analyser.fftSize);
-    const levelBuf = new Uint8Array(analyser.frequencyBinCount);
-    let smoothedLevel = 0;
-
-    const poll = () => {
-      // Audio level (RMS)
-      analyser.getByteTimeDomainData(levelBuf);
+      // Audio level
       let sum = 0;
-      for (let i = 0; i < levelBuf.length; i++) {
-        const v = (levelBuf[i]! - 128) / 128;
-        sum += v * v;
+      for (let i = 0; i < buf.length; i++) {
+        sum += buf[i]! * buf[i]!;
       }
-      const rms = Math.sqrt(sum / levelBuf.length);
+      const rms = Math.sqrt(sum / buf.length);
       const scaled = Math.min(1, rms * 2);
-      smoothedLevel =
-        LEVEL_SMOOTHING * smoothedLevel + (1 - LEVEL_SMOOTHING) * scaled;
-      setAudioLevel(smoothedLevel);
+      smoothedLevelRef.current =
+        LEVEL_SMOOTHING * smoothedLevelRef.current + (1 - LEVEL_SMOOTHING) * scaled;
+      setAudioLevel(smoothedLevelRef.current);
 
       // Pitch detection
-      analyser.getFloatTimeDomainData(timeBuf);
-      const detected = yin(timeBuf, ctx.sampleRate);
-
+      const detected = yin(buf, SAMPLE_RATE);
       if (detected !== null && detected >= 20 && detected <= 5000) {
         const info = frequencyToNote(detected);
         setFrequency(Math.round(detected * 10) / 10);
@@ -135,23 +140,92 @@ export function usePitchDetector() {
         setOctave(null);
         setCents(0);
       }
-
-      rafRef.current = requestAnimationFrame(poll);
-    };
-
-    rafRef.current = requestAnimationFrame(poll);
-    setIsActive(true);
+    } catch (err) {
+      console.error("[PitchDetector] poll error:", err);
+    }
   }, []);
 
+  const start = useCallback(async () => {
+    const { status } = await Audio.requestPermissionsAsync();
+    if (status !== "granted") {
+      throw new Error("Microphone permission is required");
+    }
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    const recording = new Audio.Recording();
+    await recording.prepareToRecordAsync({
+      android: {
+        extension: ".wav",
+        outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+        audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+        sampleRate: SAMPLE_RATE,
+        numberOfChannels: 1,
+        bitRate: 128000,
+      },
+      ios: {
+        extension: ".wav",
+        outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+        audioQuality: Audio.IOSAudioQuality.HIGH,
+        sampleRate: SAMPLE_RATE,
+        numberOfChannels: 1,
+        bitRate: 128000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+      },
+      web: { mimeType: "audio/wav", bitsPerSecond: 128000 },
+      keepAudioActiveHint: true,
+      isMeteringEnabled: true,
+    });
+
+    recordingRef.current = recording;
+    isActiveRef.current = true;
+    smoothedLevelRef.current = 0;
+
+    await recording.startAsync();
+    setIsActive(true);
+
+    pollTimerRef.current = setInterval(() => {
+      void poll();
+    }, POLL_INTERVAL_MS);
+  }, [poll]);
+
   const stop = useCallback(async () => {
-    await disconnect();
+    isActiveRef.current = false;
+
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+
+    if (recordingRef.current) {
+      try {
+        await recordingRef.current.stopAndUnloadAsync();
+      } catch {
+        // ignore
+      }
+      recordingRef.current = null;
+    }
+
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+
     setIsActive(false);
     setNote(null);
     setOctave(null);
     setFrequency(null);
     setCents(0);
     setAudioLevel(0);
-  }, [disconnect]);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      void stop();
+    };
+  }, [stop]);
 
   return { note, octave, frequency, cents, audioLevel, isActive, start, stop };
 }

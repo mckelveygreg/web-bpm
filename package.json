@@ -1,42 +1,35 @@
 {
   "name": "web-bpm",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
   "packageManager": "yarn@4.14.1",
+  "main": "expo-router/entry",
   "scripts": {
-    "dev": "vite --host",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "lint": "oxlint src/",
-    "format": "oxlint src/ --fix",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^9.0.0",
-    "@mui/material": "^9.0.0",
-    "@mui/system": "^9.0.0",
-    "@mui/x-charts": "^9.0.2",
+    "@react-navigation/bottom-tabs": "^6.6.1",
+    "@react-navigation/native": "^6.1.18",
+    "expo": "~54.0.17",
+    "expo-av": "~15.0.2",
+    "expo-dev-client": "~5.0.12",
+    "expo-file-system": "~18.0.10",
+    "expo-status-bar": "~2.0.1",
     "fft.js": "^4.0.4",
-    "idb": "^8.0.3",
-    "onnxruntime-web": "^1.24.3",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "uuid": "^13.0.0"
+    "onnxruntime-react-native": "^1.21.0",
+    "react": "18.3.1",
+    "react-native": "0.76.7",
+    "react-native-gesture-handler": "~2.20.2",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.4.0",
+    "react-native-svg": "15.8.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@types/uuid": "^11.0.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "oxlint": "^1.60.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.0.8",
-    "vite-plugin-pwa": "^1.2.0",
-    "vitest": "^4.1.4"
+    "@babel/core": "^7.25.2",
+    "@types/react": "~18.3.12",
+    "eas-cli": "^18.8.1",
+    "typescript": "~5.3.3"
   }
 }
