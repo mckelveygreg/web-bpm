@@ -91,7 +91,7 @@ export function usePitchDetector() {
       if (info.size <= WAV_HEADER_BYTES) return;
 
       const b64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: "base64",
         position: 0,
         length: info.size,
       });

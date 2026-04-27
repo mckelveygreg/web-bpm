@@ -339,7 +339,7 @@ export function useBeatNetAnalyzer() {
 
       // Read the entire file and slice new bytes
       const b64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: "base64",
         position: 0,
         length: fileSize,
       });
