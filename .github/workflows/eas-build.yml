@@ -2,9 +2,13 @@ name: EAS Build
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -21,6 +25,8 @@ jobs:
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v4.3.0
         with:
           node-version: 20
+          cache: yarn
+          cache-dependency-path: yarn.lock
 
       - name: Setup Expo and EAS
         uses: expo/expo-github-action@v8

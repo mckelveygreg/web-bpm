@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Audio } from "expo-av";
+import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system";
 import { InferenceSession, Tensor } from "onnxruntime-react-native";
 import type {
@@ -402,7 +403,12 @@ export function useBeatNetAnalyzer() {
 
     try {
       console.log("[BeatNet] Creating ONNX inference session...");
-      const session = await InferenceSession.create(MODEL_ASSET);
+      const modelAsset = Asset.fromModule(MODEL_ASSET);
+      if (!modelAsset.localUri) {
+        await modelAsset.downloadAsync();
+      }
+      const modelUri = modelAsset.localUri ?? modelAsset.uri;
+      const session = await InferenceSession.create(modelUri);
       sessionRef.current = session;
 
       const fbConfig = FILTERBANK_ASSET;
